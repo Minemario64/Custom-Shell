@@ -14,6 +14,11 @@
             "names": ["numwords", "wordcounter"],
             "path": "C:\\Users\\Charl\\OneDrive\\Documents\\Code_Projects\\python\\wordNumCounter.py",
             "language": "python"
+        },
+        {
+            "names": ["liveSplit", "speed", "speedrun"],
+            "path": "C:\\Users\\Charl\\OneDrive\\Documents\\LiveSplit_1.8.29\\LiveSplit.exe",
+            "language": "bin"
         }
     ]
 }

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from rich.console import Console
 from pathlib import Path
@@ -180,7 +181,7 @@ def runWConfig(name : str | None) -> None:
 def setUpCommands() -> None:
     commands.append(Command(["print", "pt"], lambda i: cli.print(i), "Prints out what you input into it."))
     commands.append(Command(["exit", "stop"], lambda: exit(), "Stops the shell."))
-    commands.append(Command(["clear", "cls"], lambda: showStartingPrints(), "Clears the screen."))
+    commands.append(Command(["clear", "cls"], lambda: os.system("cls"), "Clears the screen."))
     commands.append(Command(["system", "sys"], lambda command: os.system(command), "Runs the system command you pass into it"))
     commands.append(Command(["curdir", "cd"], lambda dir: changeDir(dir), "If no arguments are given, prints the current directory.\nIf 1 argument is given, changes the directory."))
     commands.append(Command(["python", "python3", "py"], lambda file: os.system(f"python3{f" {file}" if not file == None else ""}"), "Runs a python file."))
@@ -196,21 +197,15 @@ def setUpCommands() -> None:
 
 comm = CommandManager(commands)
 
-def showStartingPrints(startup : bool = False) -> None:
-    os.system("cls")
-    if startup:
-        cli.print("Welcome to the Custom Shell\n     By: [green][bold]Minemario64[/bold][/green]")
-        cli.print("---------------------------")
-    cli.print()
+def runShellFile(filepath : str) -> None:
+    with open(filepath, "r") as file:
+        commands = [command for command in file.read().split("\n") if len(command) > 0]
 
-def showCWDAndGetInput() -> str:
-    return cli.input(f"{str(curdir)}> ")
-
-def main():
-    showStartingPrints(True)
-    while True:
-        ui = showCWDAndGetInput()
-        comm.run(ui)
+    for command in commands:
+        comm.run(command)
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        print("Usage: python Custom-Shell.py <file.cmcs>")
+    else:
+        runShellFile(sys.argv[1])
