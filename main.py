@@ -2,7 +2,24 @@ import os
 import time
 from rich.console import Console
 from pathlib import Path
+from json import load, dumps, dump
 import inspect
+
+def importFromJSON(filename: str | Path) -> dict | None:
+    filepath = Path(filename) if isinstance(filename, str) else filename
+    if filepath.exists():
+        with open(filepath, "r") as file:
+            return load(file)
+
+def exportToJSON(data: dict, filename: str | Path, indent : bool = True) -> None:
+    filepath = Path(filename) if isinstance(filename, str) else filename
+    if filepath.exists():
+        if indent:
+            with open(filepath, "w") as file:
+                file.write(dumps(data, indent=4))
+        else:
+            with open(filepath, "w") as file:
+                dump(data, file)
 
 def numOfNonDefaultArgs(func) -> int:
     sig = inspect.signature(func)
@@ -47,7 +64,8 @@ def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : in
 
 cli = Console()
 curdir = Path.home()
-os.chdir(Path.home())
+pyPath = Path(__file__).parent
+os.chdir(curdir)
 
 class Command:
 
@@ -72,7 +90,35 @@ class CommandManager:
         self.commandNames : list[list[str]] = [command.names for command in commands]
 
     def parseUserInput(self, userInput : str) -> list[str]:
-        return userInput.split(" ")
+        splitText = userInput.split(" ")
+        txtIn = 0
+        inTxt = ''
+        quoteIdx = [0, 0]
+        chars = ["", ""]
+        parsedText = splitText.copy()
+        for txt in splitText:
+            if txtIn > 0:
+                parsedText.remove(txt)
+            for ltxt in list(txt):
+                if ltxt == '"' or ltxt == "'":
+                    if inTxt == ltxt:
+                        if txtIn == 2:
+                            txtIn -= 1
+                            inTxt = '"' if ltxt == "'" else "'"
+                        elif txtIn == 1:
+                            parsedText.insert(quoteIdx[txtIn - 1], chars[txtIn - 1])
+                            txtIn -= 1
+                            inTxt = ''
+                    else:
+                        quoteIdx[txtIn] = splitText.index(txt)
+                        parsedText.remove(txt)
+                        txtIn += 1
+                        inTxt = ltxt
+                elif txtIn > 0:
+                    chars[txtIn - 1] += ltxt
+            if txtIn > 0:
+                chars[txtIn - 1] += " "
+        return parsedText
 
     def run(self, userInput : str) -> None:
         pui = self.parseUserInput(userInput)
@@ -92,10 +138,52 @@ def showHelp(commands : list[Command], userInputCommand : str | None) -> None:
     elif flatten(commandNames).__contains__(userInputCommand):
         commands[indexIntoLayeredList(commandNames, userInputCommand)].help()
 
+def changeDir(newDir: str | None) -> None:
+    global curdir
+    if newDir == None:
+        cli.print(curdir)
+    else:
+        os.chdir(newDir)
+        curdir = Path().cwd()
+
+def listDir(mode: str | None, lenOfSep : int = 2) -> None:
+    listMode = "custom" if mode == None else mode
+    match listMode:
+        case "custom":
+            cli.print((" "*lenOfSep).join([f"[bold]{path.name if not list(path.name).__contains__(" ") else f'"{path.name}"'}[/bold]" if not path.is_dir() else f"[bold][cyan]{path.name if not list(path.name).__contains__(" ") else f'"{path.name}"'}[/bold][/cyan]"  for path in curdir.iterdir()]))
+
+        case "ps" | "powershell":
+            os.system("powershell ls")
+
+        case _:
+            cli.print(f"[bold][cyan]{listMode}[/bold][/cyan] is not a valid mode. Check the help to find the valid modes")
+
+def execRunCom(filepath : Path, language : str) -> None:
+    match language:
+        case "python":
+            os.system(f"python3 {filepath}")
+
+def runWConfig(name : str | None) -> None:
+    if name == None:
+        cli.print("The run command needs an argument.")
+        return None
+
+    config = importFromJSON(pyPath.joinpath("config.json"))["run"]
+    for runConfig in config:
+        if runConfig["names"].__contains__(name):
+            execRunCom(Path(runConfig["path"]), runConfig["language"])
+
 @lambda _: _()
 def setUpCommands() -> None:
-    commands.append(Command(["print", "pt"], lambda i: print(i), "Prints out what you input into it."))
+    commands.append(Command(["print", "pt"], lambda i: cli.print(i), "Prints out what you input into it."))
     commands.append(Command(["exit", "stop"], lambda: exit(), "Stops the shell."))
+    commands.append(Command(["clear", "cls"], lambda: showStartingPrints(), "Clears the screen."))
+    commands.append(Command(["system", "sys"], lambda command: os.system(command), "Runs the system command you pass into it"))
+    commands.append(Command(["curdir", "cd"], lambda dir: changeDir(dir), "If no arguments are given, prints the current directory.\nIf 1 argument is given, changes the directory."))
+    commands.append(Command(["python", "python3", "py"], lambda file: os.system(f"python3{f" {file}" if not file == None else ""}"), "Runs a python file."))
+    commands.append(Command(["listdir", "list", "ls"], lambda mode, length=2: listDir(mode, length), "Lists the contents of the current directory. Mode: [cyan]custom[/cyan], [cyan]ps[/cyan], [cyan]powershell[/cyan]"))
+    commands.append(Command(["run"], lambda exec: runWConfig(exec), "Runs a set file via a config. Needs arguments"))
+    commands.append(Command(["config"], lambda: cli.print("Not Implemented"), "Changes the set config for the run command."))
 
     commands.append(Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does."))
 

@@ -1,0 +1,19 @@
+{
+    "run" : [
+        {
+            "names": ["spkeys", "spanishkeybinds"],
+            "path": "C:\\Users\\Charl\\OneDrive\\Documents\\Code_Projects\\python\\Automation\\spanishKeybinds.py",
+            "language": "python"
+        },
+        {
+            "names": ["imgshader", "imgsh"],
+            "path": "C:\\Users\\Charl\\OneDrive\\Documents\\Code_Projects\\python\\imgShader.py",
+            "language": "python"
+        },
+        {
+            "names": ["numwords", "wordcounter"],
+            "path": "C:\\Users\\Charl\\OneDrive\\Documents\\Code_Projects\\python\\wordNumCounter.py",
+            "language": "python"
+        }
+    ]
+}
