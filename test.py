@@ -1,3 +1,3 @@
-testStr = "run spkeys"
+testIm = "from commands import *"
 
-print(testStr.strip())
+print(testIm.strip("from ").strip(" import *"))

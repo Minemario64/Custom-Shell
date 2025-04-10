@@ -19,6 +19,11 @@
             "names": ["liveSplit", "speed", "speedrun"],
             "path": "C:\\Users\\Charl\\OneDrive\\Documents\\LiveSplit_1.8.29\\LiveSplit.exe",
             "language": "bin"
+        },
+        {
+            "names": ["combinefiles", "comfiles", "cmf"],
+            "path": "C:\\Users\\Charl\\OneDrive\\Documents\\Code_Projects\\python\\Automation\\multipleFilesToOneFile.py",
+            "language": "python"
         }
     ]
 }

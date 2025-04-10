@@ -64,7 +64,7 @@ def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : in
 
 cli = Console()
 curdir = Path.home()
-pyPath = Path(__file__).parent
+pyPath = Path(Path(__file__).parent).joinpath("/_internal")
 os.chdir(curdir)
 
 class Command:
