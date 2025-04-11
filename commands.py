@@ -1,4 +1,4 @@
-version = [0, 2, 1]
+version = [0, 2, 2]
 VERSION = ".".join([str(num) for num in version])
 
 import os
@@ -171,7 +171,7 @@ def listDir(mode: str | None, lenOfSep : int = 2) -> None:
 def execRunCom(filepath : Path, language : str) -> None:
     match language:
         case "python":
-            os.system(f"python3 {filepath}")
+            runPyFile(filepath)
 
         case "bin" | "exe":
             os.system(f"start {filepath}")
@@ -202,6 +202,40 @@ def webcutWConfig(name : str | None) -> None:
         if webConfig["names"].__contains__(name):
             execRunCom(Path(webConfig["url"]), "website")
 
+def runPyFile(filepath : str | None) -> None:
+    filepy = Path(filepath).absolute()
+    config = importFromJSON(Path.home().joinpath("config.json"))
+    if not config["needpypath"]:
+        os.system(f"python3{f" {filepath}" if not filepath == None else ""}")
+        return None
+
+    if not Path(config["pypath"]).exists():
+        cli.print("[bold][orange]Error:[/bold][/orange] python path does not exist.")
+        return None
+
+    os.chdir(Path(config["pypath"]).absolute())
+    os.system(f"python3{f" {filepy}" if not filepy == None else ""}")
+    os.chdir(curdir)
+
+def changeConfig():
+
+    validInputs = ["needpypath", "pypath"]
+    validInputTypes = ["bool", "path"]
+
+
+    config = importFromJSON(Path.home().joinpath("config.json"))
+
+    inp = cli.input("Config Change? ").lower()
+
+    if validInputs.__contains__(inp):
+        validInputType = validInputTypes[validInputs.index(inp)]
+        if validInputType == "bool":
+            val = True if cli.input("t/f: ").lower() == "true" or cli.input("t/f: ").lower() == "t" else False
+        elif validInputType == "path":
+            val = cli.input("path: ")
+        config[validInputs[validInputs.index(inp)]] = val
+        exportToJSON(config, Path.home().joinpath("config.json"))
+
 def showStartingPrints(startup : bool = False) -> None:
     os.system("cls")
     if startup:
@@ -218,25 +252,33 @@ def changeToInterpreter():
 def setUpCommands() -> None:
     commands.append(Command(["print", "pt"], lambda i: cli.print(i), "Prints out what you input into it."))
     commands.append(Command(["exit", "stop"], lambda: exit(), "Stops the shell."))
+
     commands.append(Command(["clear", "cls"], lambda: showStartingPrints(), "Clears the screen."))
     commands.append(Command(["system", "sys"], lambda command: os.system(command), "Runs the system command you pass into it"))
+
     commands.append(Command(["curdir", "cd"], lambda dir: changeDir(dir), "If no arguments are given, prints the current directory.\nIf 1 argument is given, changes the directory."))
-    commands.append(Command(["python", "python3", "py"], lambda file: os.system(f"python3{f" {file}" if not file == None else ""}"), "Runs a python file."))
+    commands.append(Command(["python", "python3", "py"], lambda file: runPyFile(file), "Runs a python file."))
+
     commands.append(Command(["listdir", "list", "ls"], lambda mode, length=2: listDir(mode, length), "Lists the contents of the current directory. Mode: [cyan]custom[/cyan], [cyan]ps[/cyan], [cyan]powershell[/cyan]"))
     commands.append(Command(["run"], lambda exec: runWConfig(exec), "Runs a set file via a config. Needs arguments"))
+
     commands.append(Command(["execute", "start", "exe"], lambda file: os.system(f"start {file}"), "Executes and .exe file"))
     commands.append(Command(["makefile", "mkfile", "mkf"], lambda filename: Path.cwd().joinpath(filename).touch(), "Makes a file with the given name."))
-    commands.append(Command(["makedir", "mkdir", "mkd"], lambda dirname: Path.cwd().joinpath(f"/{dirname}").mkdir(exist_ok=True), "Makes a folder with the given name."))
 
+    commands.append(Command(["makedir", "mkdir", "mkd"], lambda dirname: Path.cwd().joinpath(f"/{dirname}").mkdir(exist_ok=True), "Makes a folder with the given name."))
     commands.append(Command(["version", "ver"], lambda: cli.print(f"[bold][red]{VERSION}[/bold][/red]"), "Prints the current version of the shell."))
 
     commands.append(Command(["sleep", "wait"], lambda secs: time.sleep(float(secs)), "Waits the given number of seconds."))
     commands.append(Command(["textedit", "txte", "notepad", "note"], lambda filepath: os.system(f"notepad{f" {filepath}" if not filepath == None else ""}"), "Opens a document in notepad"))
+
     commands.append(Command(["vscode", "code", "vsc"], lambda filepath: os.system(f"code {filepath}"), "Opens a file or folder in VSCode."))
     commands.append(Command(["execpy", "rpy"], lambda code: exec(code), "Runs the inputted python code. [bold][red]WARNING[/bold][/red]: can be used for arbritrary code execution."))
+
     commands.append(Command(["website", "web"], lambda url: os.system(f"start http://{url}"), "Opens the given website in your default browser."))
     commands.append(Command(["html"], lambda filepath: os.system(f"start {filepath}"), "Opens the given HTML file in the default browser."))
+
     commands.append(Command(["websitecut", "webcut", "webc"], lambda exec: webcutWConfig(exec), "Opens up a set website via a config."))
+    commands.append(Command(["config"], lambda: changeConfig(), "Changes the set config file."))
 
     commands.append(Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does."))
 
@@ -246,4 +288,4 @@ def showCWDAndGetInput() -> str:
 
 if not Path.home().joinpath("config.json").exists():
     Path.home().joinpath("config.json").touch()
-    exportToJSON({"run": []}, Path.home().joinpath("config.json"))
+    exportToJSON({"needpypath": False, "pypath": "", "run": [], "webcut": []}, Path.home().joinpath("config.json"))
