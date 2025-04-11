@@ -190,7 +190,7 @@ def runWConfig(name : str | None) -> None:
     config = importFromJSON(Path.home().joinpath("config.json"))["run"]
     for runConfig in config:
         if runConfig["names"].__contains__(name):
-            execRunCom(Path(runConfig["path"]), runConfig["language"])
+            execRunCom(f'"{Path(runConfig["path"])}"', runConfig["language"])
 
 def webcutWConfig(name : str | None) -> None:
     if name == None:
@@ -203,18 +203,20 @@ def webcutWConfig(name : str | None) -> None:
             execRunCom(Path(webConfig["url"]), "website")
 
 def runPyFile(filepath : str | None) -> None:
-    filepy = Path(filepath).absolute()
+
     config = importFromJSON(Path.home().joinpath("config.json"))
     if not config["needpypath"]:
-        os.system(f"python3{f" {filepath}" if not filepath == None else ""}")
+        os.system(f'python3{f' {filepath}' if not filepath == None else ''}')
         return None
 
     if not Path(config["pypath"]).exists():
         cli.print("[bold][orange]Error:[/bold][/orange] python path does not exist.")
         return None
 
+    filepy = Path(filepath)
+
     os.chdir(Path(config["pypath"]).absolute())
-    os.system(f"python3{f" {filepy}" if not filepy == None else ""}")
+    os.system(f'python.exe{f' {filepy}' if not filepath == None else ''}')
     os.chdir(curdir)
 
 def changeConfig():
@@ -230,7 +232,8 @@ def changeConfig():
     if validInputs.__contains__(inp):
         validInputType = validInputTypes[validInputs.index(inp)]
         if validInputType == "bool":
-            val = True if cli.input("t/f: ").lower() == "true" or cli.input("t/f: ").lower() == "t" else False
+            uinp = cli.input("t/f: ").lower()
+            val = True if uinp == "true" or uinp == "t" else False
         elif validInputType == "path":
             val = cli.input("path: ")
         config[validInputs[validInputs.index(inp)]] = val
