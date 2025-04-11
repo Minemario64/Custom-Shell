@@ -247,3 +247,14 @@ def showCWDAndGetInput() -> str:
 if not Path.home().joinpath("config.json").exists():
     Path.home().joinpath("config.json").touch()
     exportToJSON({"run": []}, Path.home().joinpath("config.json"))
+
+comm = CommandManager(commands)
+
+def main():
+    showStartingPrints(True)
+    while True:
+        ui = showCWDAndGetInput()
+        comm.run(ui)
+
+if __name__ == "__main__":
+    main()

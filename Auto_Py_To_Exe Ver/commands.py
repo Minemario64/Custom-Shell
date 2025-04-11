@@ -1,3 +1,6 @@
+version = [0, 2, 1]
+VERSION = ".".join([str(num) for num in version])
+
 import os
 import time
 from rich.console import Console
@@ -67,6 +70,8 @@ curdir = Path.home()
 pyPath = Path(Path(__file__).parent).joinpath("/_internal")
 os.chdir(curdir)
 
+envVars = {"%FILEDIR%": str(pyPath), "%HOME%": str(Path.home())}
+
 class Command:
 
     def __init__(self, names : list[str], func : callable, helpStr : str):
@@ -120,8 +125,15 @@ class CommandManager:
                 chars[txtIn - 1] += " "
         return parsedText
 
+    def changeVarArgs(self, parsedUserInput: list[str]) -> list[str]:
+        changedUserInput = parsedUserInput.copy()
+        for part in parsedUserInput:
+            if envVars.__contains__(part):
+                changedUserInput[parsedUserInput.index(part)] = envVars[part]
+        return changedUserInput
+
     def run(self, userInput : str) -> None:
-        pui = self.parseUserInput(userInput)
+        pui = self.changeVarArgs(self.parseUserInput(userInput))
         if flatten(self.commandNames).__contains__(pui[0]):
             runCommand : Command = self.commands[indexIntoLayeredList(self.commandNames, pui[0])]
             if numOfNonDefaultArgs(runCommand.func) == len(pui) - 1:
@@ -164,20 +176,36 @@ def execRunCom(filepath : Path, language : str) -> None:
         case "bin" | "exe":
             os.system(f"start {filepath}")
 
+        case "web" | "website":
+            os.system(f"start http://{filepath}")
+
+        case "html":
+            os.system(f"start {filepath}")
+
 def runWConfig(name : str | None) -> None:
     if name == None:
         cli.print("The run command needs an argument.")
         return None
 
-    config = importFromJSON(pyPath.joinpath("config.json"))["run"]
+    config = importFromJSON(Path.home().joinpath("config.json"))["run"]
     for runConfig in config:
         if runConfig["names"].__contains__(name):
             execRunCom(Path(runConfig["path"]), runConfig["language"])
 
+def webcutWConfig(name : str | None) -> None:
+    if name == None:
+        cli.print("The websitecut command needs an argument.")
+        return None
+
+    config = importFromJSON(Path.home().joinpath("config.json"))["webcut"]
+    for webConfig in config:
+        if webConfig["names"].__contains__(name):
+            execRunCom(Path(webConfig["url"]), "website")
+
 def showStartingPrints(startup : bool = False) -> None:
     os.system("cls")
     if startup:
-        cli.print("  Welcome to the Custom Shell\nBy: [green][bold]Minemario64[/bold][/green]   Ver: [bold][red]0.1.0[/bold][/red]")
+        cli.print(f"  Welcome to the Custom Shell\nBy: [green][bold]Minemario64[/bold][/green]   Ver: [bold][red]{VERSION}[/bold][/red]")
         cli.print("-------------------------------")
     cli.print()
 
@@ -199,7 +227,21 @@ def setUpCommands() -> None:
     commands.append(Command(["execute", "start", "exe"], lambda file: os.system(f"start {file}"), "Executes and .exe file"))
     commands.append(Command(["makefile", "mkfile", "mkf"], lambda filename: Path.cwd().joinpath(filename).touch(), "Makes a file with the given name."))
     commands.append(Command(["makedir", "mkdir", "mkd"], lambda dirname: Path.cwd().joinpath(f"/{dirname}").mkdir(exist_ok=True), "Makes a folder with the given name."))
-    commands.append(Command(["version", "ver"], lambda: cli.print("[bold][red]0.1.0[/bold][/red]"), "Prints the current version of the shell."))
+    commands.append(Command(["version", "ver"], lambda: cli.print(f"[bold][red]{VERSION}[/bold][/red]"), "Prints the current version of the shell."))
     commands.append(Command(["sleep", "wait"], lambda secs: time.sleep(float(secs)), "Waits the given number of seconds."))
+    commands.append(Command(["textedit", "txte", "notepad", "note"], lambda filepath: os.system(f"notepad{f" {filepath}" if not filepath == None else ""}"), "Opens a document in notepad"))
+    commands.append(Command(["vscode", "code", "vsc"], lambda filepath: os.system(f"code {filepath}"), "Opens a file or folder in VSCode."))
+    commands.append(Command(["execpy", "rpy"], lambda code: exec(code), "Runs the inputted python code. [bold][red]WARNING[/bold][/red]: can be used for arbritrary code execution."))
+    commands.append(Command(["website", "web"], lambda url: os.system(f"start http://{url}"), "Opens the given website in your default browser."))
+    commands.append(Command(["html"], lambda filepath: os.system(f"start {filepath}"), "Opens the given HTML file in the default browser."))
+    commands.append(Command(["websitecut", "webcut", "webc"], lambda exec: webcutWConfig(exec), "Opens up a set website via a config."))
 
     commands.append(Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does."))
+
+
+def showCWDAndGetInput() -> str:
+    return input(f"{str(curdir)}> ")
+
+if not Path.home().joinpath("config.json").exists():
+    Path.home().joinpath("config.json").touch()
+    exportToJSON({"run": []}, Path.home().joinpath("config.json"))

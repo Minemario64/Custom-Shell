@@ -2,9 +2,6 @@ from commands import *
 
 comm = CommandManager(commands)
 
-def showCWDAndGetInput() -> str:
-    return input(f"{str(curdir)}> ")
-
 def main():
     showStartingPrints(True)
     while True:
