@@ -1,9 +1,9 @@
 from commands import *
 import sys
 
-changeToInterpreter()
-
 comm = CommandManager(commands)
+
+changeToInterpreter(comm)
 
 def runShellFile(filepath : str) -> None:
     with open(filepath, "r") as file:

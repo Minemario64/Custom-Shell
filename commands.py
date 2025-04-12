@@ -1,4 +1,4 @@
-version = [0, 3]
+version = [0, 3, 0]
 VERSION = ".".join([str(num) for num in version])
 
 import os
@@ -94,11 +94,14 @@ class Command:
     def __repr__(self) -> str:
         return f"<Command: {self.names} calls {self.func}>"
 
+recordedCommands: list[str] = []
+
 class CommandManager:
 
     def __init__(self, commands : list[Command]) -> None:
         self.commands : list[Command] = commands
         self.commandNames : list[list[str]] = [command.names for command in commands]
+        self.recording: bool = False
 
     def parseUserInput(self, userInput : str) -> list[str]:
         splitText = userInput.split(" ")
@@ -139,6 +142,8 @@ class CommandManager:
         return changedUserInput
 
     def run(self, userInput : str) -> None:
+        if self.recording:
+            recordedCommands.append(userInput)
         pui = self.changeVarArgs(self.parseUserInput(userInput))
         if flatten(self.commandNames).__contains__(pui[0]):
             runCommand : Command = self.commands[indexIntoLayeredList(self.commandNames, pui[0])]
@@ -153,11 +158,13 @@ def showHelp(commands : list[Command], userInputCommand : str | None) -> None:
     commandNames = [command.names for command in commands]
     if userInputCommand == None:
         commands[commands.index(helpCommand)].help()
-    elif userInputCommand == "all":
+    if userInputCommand == "all" or userInputCommand == "*":
         cli.print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.names[0] for command in commands])}[/green]\n\tRun [yellow]help {escape("[command]")}[/yellow] to learn more.[/bold]")
-    elif userInputCommand == "env":
-        cli.print(f"[bold]{"\n".join([f"[yellow]{k}[/yellow]: [green]{envVars[k]}[/green]" for k in envVars.keys()])}[/bold]")
-    elif flatten(commandNames).__contains__(userInputCommand):
+    if userInputCommand == "*":
+        cli.print("\n-------------------------------------------------------------------------")
+    if userInputCommand == "env" or userInputCommand == "*":
+        cli.print(f"\t[bold][cyan]environment variables[/bold][/cyan]\n\n[bold]{"\n".join([f"[yellow]{k}[/yellow]: [green]{envVars[k]}[/green]" for k in envVars.keys()])}[/bold]")
+    if flatten(commandNames).__contains__(userInputCommand):
         commands[indexIntoLayeredList(commandNames, userInputCommand)].help()
 
 def changeDir(newDir: str | None) -> None:
@@ -271,11 +278,6 @@ def importAddons() -> None:
             with open(file, "r") as filecontent:
                 exec(filecontent.read())
 
-commands : list[Command] = []
-
-def changeToInterpreter():
-    commands[2].func = lambda: os.system("cls")
-
 def renameFile(filepath : str | None, newfilepath: str | None) -> None:
     if filepath == None or newfilepath == None:
         cli.print("The command rename needs a filepath and a new filepath.")
@@ -295,6 +297,42 @@ def copyFile(filepath: str | None, newfilepath: str | None) -> None:
     Path(newfilepath).touch()
     with open(newfilepath, "w") as file:
         file.write(content)
+
+def initRecording(comM: CommandManager) -> None:
+    def startRecording():
+        comM.recording = True
+
+    def stopRecording():
+        comM.recording = False
+
+    def clearRecording():
+        global recordedCommands
+        recordedCommands = []
+
+    def saveRecording(filepath: str | None) -> None:
+        global recordedCommands
+        if filepath == None:
+            cli.print("The saverecord command needs a filepath")
+            return None
+
+        recordedCommands = recordedCommands[0:-1]
+
+        mode = cli.input("do you want to use the shell after the inputs? (y/n): ")
+        match mode.lower():
+            case "y" | "yes":
+                recordedCommands.append("startinput")
+
+        Path(filepath).touch()
+        with open(filepath, "w") as file:
+            file.write("\n".join(recordedCommands))
+
+    comM.commands.append(Command(["record"], startRecording, "Records Your commands to save as a .cmcs file."))
+    comM.commands.append(Command(["stoprecord", "strecord"], stopRecording, "Stops recording commands."))
+    comM.commands.append(Command(["clearrecord", "clsrecord"], clearRecording, "Clears the recorded commands."))
+    comM.commands.append(Command(["saverecord", "cmcs"], saveRecording, "Saves the recorded commands to a .cmcs file."))
+    comM.commandNames = [command.names for command in comM.commands]
+
+commands : list[Command] = []
 
 @lambda _: _()
 def setUpCommands() -> None:
@@ -341,6 +379,11 @@ def setUpCommands() -> None:
 def showCWDAndGetInput() -> str:
     return input(f"{str(curdir)}> ")
 
+def inputLoop(comM: CommandManager) -> None:
+    while True:
+        ui = showCWDAndGetInput()
+        comM.run(ui)
+
 configExport = {"needpypath": False, "pypath": "", "addondir": "", "run": [], "webcut": []}
 
 if not Path.home().joinpath("config.json").exists():
@@ -348,3 +391,9 @@ if not Path.home().joinpath("config.json").exists():
     exportToJSON(configExport, Path.home().joinpath("config.json"))
 
 importAddons()
+
+def changeToInterpreter(comM: CommandManager):
+    commands[2].func = lambda: os.system("cls")
+    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), "Starts the user input of a .cmcs file."))
+    comM.commands = commands
+    comM.commandNames = [command.names for command in comM.commands]

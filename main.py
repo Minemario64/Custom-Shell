@@ -2,11 +2,11 @@ from commands import *
 
 comm = CommandManager(commands)
 
+initRecording(comm)
+
 def main():
     showStartingPrints(True)
-    while True:
-        ui = showCWDAndGetInput()
-        comm.run(ui)
+    inputLoop(comm)
 
 if __name__ == "__main__":
     main()

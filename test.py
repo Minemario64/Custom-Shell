@@ -1,3 +1,5 @@
-from pathlib import Path
+testlist = ["a", "b", "x"]
 
-print(Path().home().joinpath("config.json").suffix)
+print(testlist[0:-1])
+testlist.insert(-1, "v")
+print(testlist)

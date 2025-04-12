@@ -1,9 +1,10 @@
-version = [0, 2, 2]
+version = [0, 3, 0]
 VERSION = ".".join([str(num) for num in version])
 
 import os
 import time
 from rich.console import Console
+from rich.markup import escape
 from pathlib import Path
 from json import load, dumps, dump
 import inspect
@@ -70,7 +71,12 @@ curdir = Path.home()
 pyPath = Path(__file__).parent
 os.chdir(curdir)
 
-envVars = {"%FILEDIR%": str(pyPath), "%HOME%": str(Path.home())}
+envVars = {
+    "%FILEDIR%": str(pyPath),
+    "%HOME%": str(Path.home()),
+    "%USER%": str(Path.home().name),
+    "%PYDIR%": str(Path(importFromJSON(Path.home().joinpath("config.json"))["pypath"])) if importFromJSON(Path.home().joinpath("config.json"))["needpypath"] else None
+    }
 
 class Command:
 
@@ -88,11 +94,14 @@ class Command:
     def __repr__(self) -> str:
         return f"<Command: {self.names} calls {self.func}>"
 
+recordedCommands: list[str] = []
+
 class CommandManager:
 
     def __init__(self, commands : list[Command]) -> None:
         self.commands : list[Command] = commands
         self.commandNames : list[list[str]] = [command.names for command in commands]
+        self.recording: bool = False
 
     def parseUserInput(self, userInput : str) -> list[str]:
         splitText = userInput.split(" ")
@@ -133,6 +142,8 @@ class CommandManager:
         return changedUserInput
 
     def run(self, userInput : str) -> None:
+        if self.recording:
+            recordedCommands.append(userInput)
         pui = self.changeVarArgs(self.parseUserInput(userInput))
         if flatten(self.commandNames).__contains__(pui[0]):
             runCommand : Command = self.commands[indexIntoLayeredList(self.commandNames, pui[0])]
@@ -141,11 +152,19 @@ class CommandManager:
             elif numOfNonDefaultArgs(runCommand.func) > len(pui) - 1:
                 runCommand.run(*flatten([pui[1:], [None for _ in range(len(pui) - 1, numOfNonDefaultArgs(runCommand.func))]]))
 
+helpCommand = Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does.")
+
 def showHelp(commands : list[Command], userInputCommand : str | None) -> None:
     commandNames = [command.names for command in commands]
     if userInputCommand == None:
-        commands[-1].help()
-    elif flatten(commandNames).__contains__(userInputCommand):
+        commands[commands.index(helpCommand)].help()
+    if userInputCommand == "all" or userInputCommand == "*":
+        cli.print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.names[0] for command in commands])}[/green]\n\tRun [yellow]help {escape("[command]")}[/yellow] to learn more.[/bold]")
+    if userInputCommand == "*":
+        cli.print("\n-------------------------------------------------------------------------")
+    if userInputCommand == "env" or userInputCommand == "*":
+        cli.print(f"\t[bold][cyan]environment variables[/bold][/cyan]\n\n[bold]{"\n".join([f"[yellow]{k}[/yellow]: [green]{envVars[k]}[/green]" for k in envVars.keys()])}[/bold]")
+    if flatten(commandNames).__contains__(userInputCommand):
         commands[indexIntoLayeredList(commandNames, userInputCommand)].help()
 
 def changeDir(newDir: str | None) -> None:
@@ -219,11 +238,10 @@ def runPyFile(filepath : str | None) -> None:
     os.system(f'python.exe{f' {filepy}' if not filepath == None else ''}')
     os.chdir(curdir)
 
-def changeConfig():
+validInputs = ["needpypath", "pypath", "addondir"]
+validInputTypes = ["bool", "dir", "dir"]
 
-    validInputs = ["needpypath", "pypath"]
-    validInputTypes = ["bool", "path"]
-
+def changeConfig() -> None:
 
     config = importFromJSON(Path.home().joinpath("config.json"))
 
@@ -234,8 +252,11 @@ def changeConfig():
         if validInputType == "bool":
             uinp = cli.input("t/f: ").lower()
             val = True if uinp == "true" or uinp == "t" else False
-        elif validInputType == "path":
-            val = cli.input("path: ")
+        elif validInputType == "dir":
+            val = cli.input("directory: ")
+            if not Path(val).is_dir():
+                cli.print(f"'{val}' is not a directory.")
+                return None
         config[validInputs[validInputs.index(inp)]] = val
         exportToJSON(config, Path.home().joinpath("config.json"))
 
@@ -243,20 +264,82 @@ def showStartingPrints(startup : bool = False) -> None:
     os.system("cls")
     if startup:
         cli.print(f"  Welcome to the Custom Shell\nBy: [green][bold]Minemario64[/bold][/green]   Ver: [bold][red]{VERSION}[/bold][/red]")
+        cli.print("\nType [bold][yellow]help all[/bold][/yellow] to find all the commands.")
         cli.print("-------------------------------")
     cli.print()
 
-commands : list[Command] = []
+def importAddons() -> None:
+    config = importFromJSON(Path.home().joinpath("config.json"))
+    if config["addondir"] == "":
+        return None
+    addondir = Path(config["addondir"]).absolute()
+    for file in addondir.iterdir():
+        if file.is_file() and file.suffix == ".cmcsaddon":
+            with open(file, "r") as filecontent:
+                exec(filecontent.read())
 
-def changeToInterpreter():
-    commands[2].func = lambda: os.system("cls")
+def renameFile(filepath : str | None, newfilepath: str | None) -> None:
+    if filepath == None or newfilepath == None:
+        cli.print("The command rename needs a filepath and a new filepath.")
+        return None
+
+    os.chdir(str(Path(filepath).parent))
+    os.system(f'ren {Path(filepath).name} {newfilepath}')
+    os.chdir(curdir)
+
+def copyFile(filepath: str | None, newfilepath: str | None) -> None:
+    if filepath == None or newfilepath == None:
+        cli.print("The command rename needs a filepath and a new filepath.")
+        return None
+
+    with open(filepath, "r") as file:
+        content = file.read()
+    Path(newfilepath).touch()
+    with open(newfilepath, "w") as file:
+        file.write(content)
+
+def initRecording(comM: CommandManager) -> None:
+    def startRecording():
+        comM.recording = True
+
+    def stopRecording():
+        comM.recording = False
+
+    def clearRecording():
+        global recordedCommands
+        recordedCommands = []
+
+    def saveRecording(filepath: str | None) -> None:
+        global recordedCommands
+        if filepath == None:
+            cli.print("The saverecord command needs a filepath")
+            return None
+
+        recordedCommands = recordedCommands[0:-1]
+
+        mode = cli.input("do you want to use the shell after the inputs? (y/n): ")
+        match mode.lower():
+            case "y" | "yes":
+                recordedCommands.append("startinput")
+
+        Path(filepath).touch()
+        with open(filepath, "w") as file:
+            file.write("\n".join(recordedCommands))
+
+    comM.commands.append(Command(["record"], startRecording, "Records Your commands to save as a .cmcs file."))
+    comM.commands.append(Command(["stoprecord", "strecord"], stopRecording, "Stops recording commands."))
+    comM.commands.append(Command(["clearrecord", "clsrecord"], clearRecording, "Clears the recorded commands."))
+    comM.commands.append(Command(["saverecord", "cmcs"], saveRecording, "Saves the recorded commands to a .cmcs file."))
+    comM.commandNames = [command.names for command in comM.commands]
+
+commands : list[Command] = []
 
 @lambda _: _()
 def setUpCommands() -> None:
     commands.append(Command(["print", "pt"], lambda i: cli.print(i), "Prints out what you input into it."))
     commands.append(Command(["exit", "stop"], lambda: exit(), "Stops the shell."))
 
-    commands.append(Command(["clear", "cls"], lambda: showStartingPrints(), "Clears the screen."))
+    commands.append(Command(["clear", "cls"], showStartingPrints, "Clears the screen."))
     commands.append(Command(["system", "sys"], lambda command: os.system(command), "Runs the system command you pass into it"))
 
     commands.append(Command(["curdir", "cd"], lambda dir: changeDir(dir), "If no arguments are given, prints the current directory.\nIf 1 argument is given, changes the directory."))
@@ -268,7 +351,7 @@ def setUpCommands() -> None:
     commands.append(Command(["execute", "start", "exe"], lambda file: os.system(f"start {file}"), "Executes and .exe file"))
     commands.append(Command(["makefile", "mkfile", "mkf"], lambda filename: Path.cwd().joinpath(filename).touch(), "Makes a file with the given name."))
 
-    commands.append(Command(["makedir", "mkdir", "mkd"], lambda dirname: Path.cwd().joinpath(f"/{dirname}").mkdir(exist_ok=True), "Makes a folder with the given name."))
+    commands.append(Command(["makedir", "mkdir", "mkd"], lambda dirname: curdir.joinpath(f"{dirname}/").mkdir(exist_ok=True), "Makes a folder with the given name."))
     commands.append(Command(["version", "ver"], lambda: cli.print(f"[bold][red]{VERSION}[/bold][/red]"), "Prints the current version of the shell."))
 
     commands.append(Command(["sleep", "wait"], lambda secs: time.sleep(float(secs)), "Waits the given number of seconds."))
@@ -283,20 +366,42 @@ def setUpCommands() -> None:
     commands.append(Command(["websitecut", "webcut", "webc"], lambda exec: webcutWConfig(exec), "Opens up a set website via a config."))
     commands.append(Command(["config"], lambda: changeConfig(), "Changes the set config file."))
 
-    commands.append(Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does."))
+    commands.append(Command(["rename", "ren"], renameFile, "Renames a file to another file."))
+    commands.append(Command(["remove", "rm"], lambda file: os.system(f"del {file}"), "Deletes a file."))
+
+    commands.append(Command(["removedir", "rmdir"], lambda folder: os.system(f"rmdir {folder}"), "Deletes a folder."))
+    commands.append(Command(["copy"], copyFile, "Copies a file to another file."))
+
+    commands.append(Command(["restartaddons", "rsaddons", "rsa"], importAddons, "Reimports all the cmcs addons from the set folder."))
+    commands.append(helpCommand)
 
 
 def showCWDAndGetInput() -> str:
     return input(f"{str(curdir)}> ")
 
+def inputLoop(comM: CommandManager) -> None:
+    while True:
+        ui = showCWDAndGetInput()
+        comM.run(ui)
+
+configExport = {"needpypath": False, "pypath": "", "addondir": "", "run": [], "webcut": []}
+
 if not Path.home().joinpath("config.json").exists():
     Path.home().joinpath("config.json").touch()
-    exportToJSON({"needpypath": False, "pypath": "", "run": [], "webcut": []}, Path.home().joinpath("config.json"))
+    exportToJSON(configExport, Path.home().joinpath("config.json"))
+
+importAddons()
+
+def changeToInterpreter(comM: CommandManager):
+    commands[2].func = lambda: os.system("cls")
+    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), "Starts the user input of a .cmcs file."))
+    comM.commands = commands
+    comM.commandNames = [command.names for command in comM.commands]
 import sys
 
-changeToInterpreter()
-
 comm = CommandManager(commands)
+
+changeToInterpreter(comm)
 
 def runShellFile(filepath : str) -> None:
     with open(filepath, "r") as file:
