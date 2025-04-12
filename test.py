@@ -1,3 +1,3 @@
-testIm = "from commands import *"
+from pathlib import Path
 
-print(testIm.strip("from ").strip(" import *"))
+print(Path().home().joinpath("config.json").suffix)
