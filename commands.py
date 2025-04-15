@@ -1,6 +1,8 @@
 version = [0, 3, 0]
 VERSION = ".".join([str(num) for num in version])
 
+DEBUG: bool = True
+
 import os
 import time
 from rich.console import Console
@@ -151,6 +153,37 @@ class CommandManager:
                 runCommand.run(*pui[1:])
             elif numOfNonDefaultArgs(runCommand.func) > len(pui) - 1:
                 runCommand.run(*flatten([pui[1:], [None for _ in range(len(pui) - 1, numOfNonDefaultArgs(runCommand.func))]]))
+
+#Better Addon Attempt
+#------------------------------------
+#
+#class PluginRegistry(type):
+#    plugins: dict = {}
+#
+#    def __new__(cls, name, bases, dct):
+#
+#        newPluginClass = super().__new__(cls, name, bases,  dct)
+#
+#        if bases != ():
+#            PluginRegistry.plugins[name] = newPluginClass
+#            if DEBUG:
+#                cli.print(f"Registered Plugin: [bold][green]{name}")
+#        else:
+#            if DEBUG:
+#                cli.print(f"Created Plugin Base: [bold][green]{name}")
+#
+#        return newPluginClass
+#
+#class Plugin(metaclass=PluginRegistry):
+#
+#    def __init__(self, filepath : Path) -> None:
+#        self.filepath = filepath
+#
+#    def run(self):
+#        raise NotImplementedError
+#
+#    def close(self):
+#        raise NotImplementedError
 
 helpCommand = Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does.")
 
@@ -332,6 +365,9 @@ def initRecording(comM: CommandManager) -> None:
     comM.commands.append(Command(["saverecord", "cmcs"], saveRecording, "Saves the recorded commands to a .cmcs file."))
     comM.commandNames = [command.names for command in comM.commands]
 
+def sysRun() -> None:
+    os.system(input("sys Command: "))
+
 commands : list[Command] = []
 
 @lambda _: _()
@@ -340,7 +376,7 @@ def setUpCommands() -> None:
     commands.append(Command(["exit", "stop"], lambda: exit(), "Stops the shell."))
 
     commands.append(Command(["clear", "cls"], showStartingPrints, "Clears the screen."))
-    commands.append(Command(["system", "sys"], lambda command: os.system(command), "Runs the system command you pass into it"))
+    commands.append(Command(["system", "sys"], sysRun, "Runs the system command you pass into it"))
 
     commands.append(Command(["curdir", "cd"], lambda dir: changeDir(dir), "If no arguments are given, prints the current directory.\nIf 1 argument is given, changes the directory."))
     commands.append(Command(["python", "python3", "py"], lambda file: runPyFile(file), "Runs a python file."))
