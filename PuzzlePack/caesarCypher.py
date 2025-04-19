@@ -2,7 +2,8 @@
 charLists = {
     "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
     "alphanumeric": "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
-    "qwerty": "QWERTYUIOPASDFGHJKLZXCVBNM"
+    "qwerty": "QWERTYUIOPASDFGHJKLZXCVBNM",
+    "numeric": "1234567890"
 }
 
 def customCypherPreset(charListName : str | list[str], turns : int, *extra, keepCase : bool = True, addInfo : bool = False, getInfo : bool = True, customCharList : bool = False) -> callable:

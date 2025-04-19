@@ -1,4 +1,4 @@
-version = [0, 3, 0]
+version = [1, 0, 0, 1]
 VERSION = ".".join([str(num) for num in version])
 
 DEBUG: bool = True
@@ -11,6 +11,7 @@ from pathlib import Path
 from json import load, dumps, dump
 import inspect
 from PuzzlePack import *
+from typing import Literal
 
 def importFromJSON(filename: str | Path) -> dict | None:
     filepath = Path(filename) if isinstance(filename, str) else filename
@@ -83,10 +84,12 @@ envVars = {
 
 class Command:
 
-    def __init__(self, names : list[str], func : callable, helpStr : str):
+    def __init__(self, names : list[str], func : callable, helpInfo : dict, parserPreset: Literal["default", "base-split"] = "default"):
         self.names : list[str] = names
         self.func = func
-        self.helpStr = f"\t[bold][cyan]{names[0]}[/bold][/cyan]\n\n{helpStr}\n\tCan be called with [bold][cyan]{f"{"[/cyan][/bold], [bold][cyan]".join(names[0:-1])}[/cyan][/bold], or [bold][cyan]{names[-1]}" if len(names) > 2 else f"{"[/cyan][/bold] and [bold][cyan]".join(names)}" if len(names) == 2 else f"[cyan][bold]{names[0]}"}[/cyan][/bold]"
+        self.helpInfo = helpInfo
+        self.helpStr = f"\n\t[bold][cyan]{helpInfo["name"]}[/bold][/cyan]\n\n{helpInfo["description"]}\n\n{f"\t[bold][green]Kwargs:[/bold][/green]\n[bold]{"\n\n[bold]".join([f'{arg}[/bold]: {description}' for arg, description in helpInfo["kwargs"].items()])}\n\n" if helpInfo["has-kwargs"] else ''}Can be called with: [bold][cyan]{"[/bold][/cyan], [bold][cyan]".join(names)}[/bold][/cyan]."
+        self.parserPreset = parserPreset
 
     def run(self, *inputs, **kwinputs):
         return self.func(*inputs, **kwinputs)
@@ -154,6 +157,9 @@ class CommandManager:
                         if output[1]["args"] == None:
                             output[1]["args"] = []
                         output[1]["args"].append(arg)
+            if kwarg != None:
+                output[1][kwarg] = None
+
         return output
 
     def changeVarArgs(self, parsedUserInput: tuple[str, dict[str:str]]) -> tuple[str, dict[str:str]]:
@@ -165,15 +171,23 @@ class CommandManager:
         return changedUserInput
 
     def run(self, userInput : str) -> None:
-        if self.recording:
-            recordedCommands.append(userInput)
-        pui = self.changeVarArgs(self.parseCommand(userInput))
-        if flatten(self.commandNames).__contains__(pui[0]):
-            runCommand : Command = self.commands[indexIntoLayeredList(self.commandNames, pui[0])]
-            if numOfNonDefaultArgs(runCommand.func) == 0:
-                runCommand.run()
-            else:
-                runCommand.run(**pui[1])
+        if flatten(self.commandNames).__contains__(userInput.split(" ", 1)[0]):
+            command : Command = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0])]
+        else:
+            return None
+
+        match command.parserPreset:
+            case "default":
+                pui = self.changeVarArgs(self.parseCommand(userInput))
+
+            case "base-split":
+                parse = userInput.split(" ", 1)
+                pui = (parse[0], {"args": parse[1]})
+
+        if numOfNonDefaultArgs(command.func) == 0:
+            command.run()
+        else:
+            command.run(**pui[1])
 
 # Better Addon Attempt
 #------------------------------------
@@ -182,6 +196,7 @@ class PluginRegistry(type):
     plugins: dict = {}
 
     def __new__(cls, name, bases, dct):
+        print("Creating class with the Registry.")
 
         newPluginClass = super().__new__(cls, name, bases,  dct)
 
@@ -214,27 +229,47 @@ def showStartingPrints(startup : bool = False) -> None:
         cli.print("-------------------------------")
     cli.print()
 
-def importAddons() -> None:
-    config = importFromJSON(Path.home().joinpath("config.json"))
-    if config["addondir"] == "":
-        return None
-    addondir = Path(config["addondir"]).absolute()
-    for file in addondir.iterdir():
-        if file.is_file() and file.suffix == ".cmcsaddon2":
-            with open(file, "r") as filecontent:
-                exec(caesarCypher.deCypher(filecontent.read(), "alphanumeric", 13))
-                exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{file.name}').run()")
-
 #------------------------------------------------------
 
-def needsArgsSetup(command: str, args: int) -> callable:
-    def checkArgs(**kwargs) -> bool:
+def lambdaWithKWArgsSetup(lambdaFunc: callable):
+    def runLambdaWithKWArgs(**kwargs):
+        lambdaFunc(kwargs)
+
+    return runLambdaWithKWArgs
+
+def needsArgsSetup(command: str, args: int, comparison: str = ">=") -> callable:
+    def checkAtLeastArgs(**kwargs) -> bool:
         if kwargs["args"] == None or len(kwargs["args"]) < args:
             cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] needs at least {args} arguments.")
             return False
         return True
 
-    return checkArgs
+    def checkAtMostArgs(**kwargs) -> bool:
+        if kwargs["args"] != None and len(kwargs["args"]) > args:
+            cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] needs at most {args} arguments.")
+            return False
+        return True
+
+    def checkExactArgs(**kwargs) -> bool:
+        if kwargs["args"] == None or len(kwargs["args"]) != args:
+            cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] needs exactly {args} arguments.")
+            return False
+        return True
+
+    def checkNoArgs(**kwargs) -> bool:
+        if kwargs["args"] != None:
+            cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] does not take any arguments.")
+            return False
+        return True
+
+    if args == 0:
+        return checkNoArgs
+    elif comparison == ">=":
+        return checkAtLeastArgs
+    elif comparison == "<=":
+        return checkAtMostArgs
+    elif comparison == "=":
+        return checkExactArgs
 
 def needsKWArgsSetup(command: str, neededkwargs: list[str]) -> callable:
     def checkKWArgs(**kwargs) -> bool:
@@ -260,29 +295,306 @@ def defaultArgs(defaultArgs: dict, **kwargs) -> dict:
 
     return kwargs
 
+def booleanArgs(booleanArgs: list[str], **kwargs) -> dict:
+    for arg in booleanArgs:
+        try:
+            if kwargs[arg] == None:
+                pass
+            kwargs[arg] = True
+        except:
+            kwargs[arg] = False
+
+    return kwargs
+
+
+#---------------------------------------------------
+
+def importAddons() -> None:
+    config = importFromJSON(Path.home().joinpath("config.json"))
+    if config["addondir"] == "":
+        return None
+    addondir = Path(config["addondir"]).absolute()
+    for file in addondir.iterdir():
+        if file.is_file() and file.suffix == ".cmcsaddon2":
+            with open(file, "r") as filecontent:
+                print(caesarCypher.deCypher(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), "numeric", 3))
+                exec(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), globals())
+                exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{file.name}').run()", globals())
+
+def manageAddons(**kwargs) -> None:
+    kwargs = booleanArgs(["l"], **kwargs)
+    if kwargs["l"]:
+        cli.print(*tuple(str(k).replace("_", " ") for k in PluginRegistry.plugins.keys()), sep="    ")
+        return None
+
 #---------------------------------------------------
 
 def println(**kwargs) -> None:
-    if not needsArgsSetup("print", 1)(**kwargs):
+    try:
+        if kwargs["-file"] != None:
+            with open(curdir.joinpath(kwargs["-file"]), "r") as file:
+                cli.print(file.read(), style=kwargs["-color"])
+    except KeyError:
+        if not needsArgsSetup("print", 1)(**kwargs):
+            return None
+
+        kwargs = defaultArgs({"s": " ", "-color": None}, **kwargs)
+        cli.print(*tuple(kwargs["args"]), sep=kwargs["s"], style=kwargs["-color"])
+
+def execRunCom(filepath : Path, language : str) -> None:
+    match language:
+        case "python":
+            runPyFile(**{"args": [filepath]})
+
+        case "bin" | "exe":
+            os.system(f"start {filepath}")
+
+        case "web" | "website":
+            os.system(f"start http://{filepath}")
+
+        case "html":
+            os.system(f"start {filepath}")
+
+def runWConfig(**kwargs) -> None:
+    if not needsArgsSetup("run", 1, "=")(**kwargs):
         return None
 
-    kwargs = defaultArgs({"s": " ", "-style": None}, **kwargs)
-    cli.print(*tuple(kwargs["args"]), sep=kwargs["s"], style=kwargs["-color"])
+    config = importFromJSON(Path.home().joinpath("config.json"))["run"]
+    for runConfig in config:
+        if runConfig["names"].__contains__(kwargs["args"][0]):
+            execRunCom(f'"{Path(runConfig["path"])}"', runConfig["language"])
 
-def sysRun(**kwargs) -> None:
-    if kwargs["args"] != None:
-        os.system(" ".join(kwargs["args"]))
-    os.system(input("sys Command: "))
+def webcutWConfig(**kwargs) -> None:
+    if not needsArgsSetup("webcut", 1, "="):
+        return None
 
-commands : list[Command] = []
+    config = importFromJSON(Path.home().joinpath("config.json"))["webcut"]
+    for webConfig in config:
+        if webConfig["names"].__contains__(kwargs["args"][0]):
+            execRunCom(Path(webConfig["url"]), "website")
+
+validInputs = ["needpypath", "pypath", "addondir"]
+validInputTypes = ["bool", "dir", "dir"]
+
+def changeConfig() -> None:
+
+    config = importFromJSON(Path.home().joinpath("config.json"))
+
+    inp = cli.input("Config Change? ").lower()
+
+    if validInputs.__contains__(inp):
+        validInputType = validInputTypes[validInputs.index(inp)]
+        if validInputType == "bool":
+            uinp = cli.input("t/f: ").lower()
+            val = True if uinp == "true" or uinp == "t" else False
+        elif validInputType == "dir":
+            val = cli.input("directory: ")
+            if not Path(val).is_dir():
+                cli.print(f"'{val}' is not a directory.")
+                return None
+        config[validInputs[validInputs.index(inp)]] = val
+        exportToJSON(config, Path.home().joinpath("config.json"))
+
+def listdir(**kwargs) -> None:
+    try:
+        kwargs["ps"]
+        os.system("powershell ls")
+    except KeyError:
+        kwargs = defaultArgs({"t": "all", "s": " "*2, "-folder-color": "blue bold", "-file-color": None}, **kwargs)
+        folders = []
+        files = []
+        for file in curdir.iterdir():
+            if file.is_dir():
+                folders.append(f'"{file.name}"' if file.name.__contains__(" ") else file.name)
+            elif file.is_file():
+                files.append(f'"{file.name}"' if file.name.__contains__(" ") else file.name)
+
+        match kwargs["t"]:
+            case "all":
+                cli.print(f"{kwargs["s"].join(folders)}", end=kwargs["s"], style=kwargs["-folder-color"])
+                cli.print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
+
+            case "files" | "file" | "f":
+                cli.print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
+
+            case "folders" | "dirs" | "folder" | "dir" | "d":
+                cli.print(f"{kwargs["s"].join(folders)}", style=kwargs["-folder-color"])
+
+def makeFile(**kwargs) -> None:
+    if not needsArgsSetup("makefile", 1)(**kwargs):
+        return None
+
+    for file in kwargs["args"]:
+        curdir.joinpath(file).touch()
+
+def makeDir(**kwargs) -> None:
+    if not needsArgsSetup("makedir", 1)(**kwargs):
+        return None
+
+    for folder in kwargs["args"]:
+        curdir.joinpath(folder).mkdir(exist_ok=True)
+
+def openVSCode(**kwargs) -> None:
+    if not needsArgsSetup("vscode", 1, "=")(**kwargs):
+        return None
+
+    os.system(f'code {kwargs["args"][0]}')
+
+def openWebsite(**kwargs) -> None:
+    if not needsArgsSetup("website", 1)(**kwargs):
+        return None
+
+    for website in kwargs["args"]:
+        os.system(f'start http://{website}')
+
+def wait(**kwargs) -> None:
+    if not needsArgsSetup("wait", 1, "="):
+        return None
+
+    kwargs = defaultArgs({"-format": "seconds"}, **kwargs)
+
+    match kwargs["-format"]:
+        case "secs" | "sec" | "s" | "seconds" | "second":
+            time.sleep(float(kwargs["args"][0]))
+
+        case "mins" | "min" | "m" | "minutes" | "minute":
+            time.sleep(float(kwargs["args"][0]) * 60)
+
+def openNotepad(**kwargs) -> None:
+    if not needsArgsSetup("vscode", 1, "<=")(**kwargs):
+        return None
+
+
+    os.system(f'notepad{f' {kwargs["args"]}' if kwargs["args"] != None else ""}')
+
+def changeDir(**kwargs) -> None:
+    global curdir
+    if kwargs["args"] == None:
+        cli.print(curdir)
+        return None
+
+    os.chdir(kwargs["args"][0])
+    curdir = Path.cwd()
+
+def executeFile(**kwargs) -> None:
+    if kwargs["args"] == '':
+        cli.print("The command execute needs an argument.")
+        return None
+
+    os.system(f'start {kwargs["args"][0]}')
+
+def runPyFile(**kwargs) -> None:
+
+    config = importFromJSON(Path.home().joinpath("config.json"))
+    if not config["needpypath"]:
+        os.system(f'python3{f' {kwargs["args"]}' if not kwargs["args"] == '' else ''}')
+        return None
+
+    if not Path(config["pypath"]).exists():
+        cli.print("[bold][orange]Error:[/bold][/orange] python path does not exist.")
+        return None
+
+    filepy = Path(kwargs["args"]).absolute()
+
+    os.chdir(Path(config["pypath"]).absolute())
+    os.system(f'python.exe{f' {filepy}' if not kwargs["args"] == None else ''}')
+    os.chdir(curdir)
+
+def runHTML(**kwargs) -> None:
+    if kwargs["args"] == '':
+        cli.print("The command html needs an argument.")
+        return None
+
+    for file in kwargs["args"]:
+        os.system(f'start {file}')
+
+def renameFile(**kwargs) -> None:
+    if not needsArgsSetup("rename", 2, "=")(**kwargs):
+        return None
+
+    os.system(f"ren {kwargs["args"][0]} {kwargs['args'][1]}")
+
+def copyFile(**kwargs) -> None:
+    if not needsArgsSetup("copy", 2)(**kwargs):
+        return None
+
+    with open(kwargs["args"][0], "r") as file:
+        fileContent = file.read()
+
+    for file in kwargs["args"][1:]:
+        with open(file, "w") as newFile:
+            newFile.write(fileContent)
+
+def removeContent(**kwargs) -> None:
+    if not needsArgsSetup("remove", 1)(**kwargs):
+        return None
+
+    kwargs = booleanArgs(["rf"], **kwargs)
+
+    if kwargs["rf"]:
+        os.system(f"rmdir /s {kwargs["args"][0]}")
+    else:
+        os.system(f"del /f {kwargs["args"][0]}")
+
+helpCommand = Command(["help"], lambdaWithKWArgsSetup(lambda kwargs: showHelp(commands, **kwargs)), {"name": "help", "description": "lets you know how to use a command and what that command does.", "has-kwargs": False})
+
+def showHelp(commands : list[Command], **kwargs) -> None:
+    commandNames = [command.names for command in commands]
+    if kwargs["args"] == None:
+        commands[commands.index(helpCommand)].help()
+        return None
+
+    if kwargs["args"][0] == "all" or kwargs["args"][0] == "*":
+        cli.print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.helpInfo["name"] for command in commands])}[/green]\n\tRun [yellow]help {escape("[command]")}[/yellow] to learn more.[/bold]")
+
+    if kwargs["args"][0] == "*":
+        cli.print("\n-------------------------------------------------------------------------")
+
+    if kwargs["args"][0] == "env" or kwargs["args"][0] == "*":
+        cli.print(f"\t[bold][cyan]environment variables[/bold][/cyan]\n\n[bold]{"\n".join([f"[yellow]{k}[/yellow]: [green]{envVars[k]}[/green]" for k in envVars.keys()])}[/bold]")
+
+    if flatten(commandNames).__contains__(kwargs["args"][0]):
+        commands[indexIntoLayeredList(commandNames, kwargs["args"][0])].help()
+
+#--------------------
+
+commands: list[Command] = []
 
 @lambda _: _()
-def setUpCommands() -> None:
-    commands.append(Command(["print"], println, "Prints the arguments you give it."))
-    commands.append(Command(["exit", "stop"], lambda: exit(), "Exits the terminal."))
+def initCommands() -> None:
+    commands.append(Command(["print"], println, {"name": "print", "description": "Prints the arguments you give it.", "has-kwargs": True, "kwargs": {"-s": "Separating string between each argument", "--color": "Style the printed text", "--file": "Will print the contents of the text file you give it instead of the given arguments"}}))
+    commands.append(Command(["exit", "stop"], lambda: exit(), {"name": "exit", "description": "Exits the terminal.", "has-kwargs": False}))
 
-    commands.append(Command(["clear", "cls"], showStartingPrints, "Clears the terminal."))
-    commands.append(Command(["system", "sys"], sysRun, "Runs the system command given."))
+    commands.append(Command(["clear", "cls"], showStartingPrints, {"name": "clear", "description": "Clears the terminal.", "has-kwargs": False}))
+    commands.append(Command(["list", "ls"], listdir, {"name": "list", "description": "Lists all files in the current directory.", "has-kwargs": True, "kwargs": {"-ps": "Runs the powershell version of ls instead of the shell's version", "-t": "Filter to both files and folders 'all', only files 'files', or only folders 'folders'", "--folder-color": "Styles the color of the names of the folders", "--file-color": "Styles the color of the names of the files"}}))
+
+    commands.append(Command(["makefile", "mkf"], makeFile, {"name": "makefile", "description": "Makes files.", "has-kwargs": False}))
+    commands.append(Command(["makedir", "mkdir"], makeDir, {"name": "makedir", "description": "Makes directories.", "has-kwargs": False}))
+
+    commands.append(Command(["vscode", "code"], openVSCode, {"name": "vscode", "description": "Opens the given file or folder in vscode.", "has-kwargs": False}))
+    commands.append(Command(["website", "web"], openWebsite, {"name": "website", "description": "Opens the given websites in your default browser.", "has-kwargs": False}))
+
+    commands.append(Command(["wait", "sleep"], wait, {"name": "wait", "description": "Waits the given amount of time.", "has-kwargs": True, "kwargs": {"--format": "Takes the given argument and gives it a different unit of time: 'secs', 'mins'"}}))
+    commands.append(Command(["notepad", "note", "txt"], openNotepad, {"name": "notepad", "description": "Opens a file in notepad.", "has-kwargs": False}))
+
+    commands.append(Command(["execute", "start", "exe"], executeFile, {"name": "execute", "description": "Runs an executable file", "has-kwargs": False}, 'base-split'))
+    commands.append(Command(["cd"], changeDir, {"name": "changedir", "description": "Changes the current directory.", "has-kwargs": False}))
+
+    commands.append(Command(["python", "python3", "py"], runPyFile, {"name": "python", "description": "Runs a python file.", "has-kwargs": False}, 'base-split'))
+    commands.append(Command(["html"], runHTML, {"name": "html", "description": "Runs the given HTML files.", "has-kwargs": False}))
+
+    commands.append(Command(["rename", "ren"], renameFile, {"name": "rename", "description": "Renames a given file.", "has-kwargs": False}))
+    commands.append(Command(["copy"], copyFile, {"name": "copy", "description": "Copies the contents of a text file to the other given files.", "has-kwargs": False}))
+
+    commands.append(Command(["remove", "rm"], removeContent, {"name": "remove", "description": "Removes a file or folder and all it's content.", "has-kwargs": False}))
+    commands.append(Command(["run"], runWConfig, {"name": "run", "description": "Runs a set file via a config.", "has-kwargs": False}))
+
+    commands.append(Command(["webcut", "webc"], webcutWConfig, {"name": "webcut", "description": "Opens up a set website via a config.", "has-kwargs": False}))
+    commands.append(Command(["version", "ver"], lambda: cli.print(f"[bold][red]{VERSION}[/bold][/red]"), {"name": "version", "description": "Prints the current version of the shell.", "has-kwargs": False}))
+
+
+    commands.append(Command(["addons"], manageAddons, {"name": "addons", "description": "Manages all imported addons.", "has-kwargs": True, "kwargs": {"-l": "Lists the currently imported addons."}}))
+    commands.append(helpCommand)
 
 
 def showCWDAndGetInput() -> str:
@@ -295,12 +607,25 @@ def inputLoop(comM: CommandManager) -> None:
 
 configExport = {"needpypath": False, "pypath": "", "addondir": "", "run": [], "webcut": []}
 
+def updateConfig() -> None:
+    config = importFromJSON(Path.home().joinpath("config.json"))
+    for setting, default in configExport.items():
+        try:
+            config[setting]
+        except KeyError:
+            config[setting] = default
+    exportToJSON(config, Path.home().joinpath("config.json"))
+
 if not Path.home().joinpath("config.json").exists():
     Path.home().joinpath("config.json").touch()
     exportToJSON(configExport, Path.home().joinpath("config.json"))
+
+updateConfig()
 
 def changeToInterpreter(comM: CommandManager):
     commands[2].func = lambda: os.system("cls")
     commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), "Starts the user input of a .cmcs file."))
     comM.commands = commands
     comM.commandNames = [command.names for command in comM.commands]
+
+importAddons()

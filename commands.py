@@ -154,37 +154,6 @@ class CommandManager:
             elif numOfNonDefaultArgs(runCommand.func) > len(pui) - 1:
                 runCommand.run(*flatten([pui[1:], [None for _ in range(len(pui) - 1, numOfNonDefaultArgs(runCommand.func))]]))
 
-#Better Addon Attempt
-#------------------------------------
-#
-#class PluginRegistry(type):
-#    plugins: dict = {}
-#
-#    def __new__(cls, name, bases, dct):
-#
-#        newPluginClass = super().__new__(cls, name, bases,  dct)
-#
-#        if bases != ():
-#            PluginRegistry.plugins[name] = newPluginClass
-#            if DEBUG:
-#                cli.print(f"Registered Plugin: [bold][green]{name}")
-#        else:
-#            if DEBUG:
-#                cli.print(f"Created Plugin Base: [bold][green]{name}")
-#
-#        return newPluginClass
-#
-#class Plugin(metaclass=PluginRegistry):
-#
-#    def __init__(self, filepath : Path) -> None:
-#        self.filepath = filepath
-#
-#    def run(self):
-#        raise NotImplementedError
-#
-#    def close(self):
-#        raise NotImplementedError
-
 helpCommand = Command(["help"], lambda command: showHelp(commands, command), "lets you know how to use a command and what that command does.")
 
 def showHelp(commands : list[Command], userInputCommand : str | None) -> None:
