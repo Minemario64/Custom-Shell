@@ -318,7 +318,7 @@ def importAddons() -> None:
         if file.is_file() and file.suffix == ".cmcsaddon2":
             with open(file, "r") as filecontent:
                 print(caesarCypher.deCypher(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), "numeric", 3))
-                exec(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), globals())
+                exec(caesarCypher.deCypher(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), "numeric", 3), globals())
                 exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{file.name}').run()", globals())
 
 def manageAddons(**kwargs) -> None:
