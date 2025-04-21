@@ -13,6 +13,15 @@ import inspect
 from PuzzlePack import *
 from typing import Literal
 
+heldCommands: list[list] = []
+
+def hold(func: callable, *args, **kwargs) -> None:
+    heldCommands.append([func, args, kwargs])
+
+def release() -> None:
+    for command in heldCommands:
+        command[0](*command[1], **command[2])
+
 def importFromJSON(filename: str | Path) -> dict | None:
     filepath = Path(filename) if isinstance(filename, str) else filename
     if filepath.exists():
@@ -196,19 +205,23 @@ class PluginRegistry(type):
     plugins: dict = {}
 
     def __new__(cls, name, bases, dct):
-        print("Creating class with the Registry.")
 
-        newPluginClass = super().__new__(cls, name, bases,  dct)
+        try:
+            PluginRegistry.plugins[name]
+            hold(cli.print, f"[bold][red]Error[/bold][/red]: Plugin '{name}' failed to import; plugin name '[red][bold]{name}[/bold][/red]' already exists")
 
-        if bases != ():
-            PluginRegistry.plugins[name] = newPluginClass
-            if DEBUG:
-                cli.print(f"Registered Plugin: [bold][green]{name}")
-        else:
-            if DEBUG:
-                cli.print(f"Created Plugin Base: [bold][green]{name}")
+        except KeyError:
+            newPluginClass = super().__new__(cls, name, bases,  dct)
 
-        return newPluginClass
+            if bases != ():
+                PluginRegistry.plugins[name] = newPluginClass
+                if DEBUG:
+                    cli.print(f"Registered Plugin: [bold][green]{name}")
+            else:
+                if DEBUG:
+                    cli.print(f"Created Plugin Base: [bold][green]{name}")
+
+            return newPluginClass
 
 class Plugin(metaclass=PluginRegistry):
 
@@ -309,23 +322,55 @@ def booleanArgs(booleanArgs: list[str], **kwargs) -> dict:
 
 #---------------------------------------------------
 
+addonClasses: list = []
+
 def importAddons() -> None:
     config = importFromJSON(Path.home().joinpath("config.json"))
     if config["addondir"] == "":
         return None
     addondir = Path(config["addondir"]).absolute()
+
+
+    global addonClasses
+
     for file in addondir.iterdir():
         if file.is_file() and file.suffix == ".cmcsaddon2":
             with open(file, "r") as filecontent:
-                print(caesarCypher.deCypher(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), "numeric", 3))
                 exec(caesarCypher.deCypher(caesarCypher.deCypher(filecontent.read(), "alphabet", 13), "numeric", 3), globals())
-                exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{file.name}').run()", globals())
+                addonClasses.append(globals()[list(PluginRegistry.plugins.keys())[-1]](file.name))
+                exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{(file.name)}').run()", globals())
 
 def manageAddons(**kwargs) -> None:
+    global addonClasses
     kwargs = booleanArgs(["l"], **kwargs)
     if kwargs["l"]:
-        cli.print(*tuple(str(k).replace("_", " ") for k in PluginRegistry.plugins.keys()), sep="    ")
+        cli.print(*tuple(cls.__class__.__name__ for cls in addonClasses if not isinstance(cls, str)), sep="    ")
         return None
+
+    if not needsArgsSetup("addons", 2, "=")(**kwargs):
+        return None
+
+    match kwargs["args"][0]:
+        case "close":
+            idx = list(PluginRegistry.plugins.keys()).index(kwargs["args"][1])
+            addonClasses[idx].close()
+            addonClasses[idx] = kwargs["args"][1]
+
+        case "run":
+            idx = list(PluginRegistry.plugins.keys()).index(kwargs["args"][1])
+            addonClasses[idx] = PluginRegistry.plugins[kwargs["args"][1]]
+            addonClasses[idx].run()
+
+        case "restart":
+            if kwargs["args"][1] == "all":
+                for pluginname in PluginRegistry.plugins.keys():
+                    cli.print(f"Closing Plugin: [bold][yellow]{pluginname}")
+                    PluginRegistry.plugins[pluginname] = None
+                    globals().pop(pluginname)
+
+                PluginRegistry.plugins = {key:value for key, value in PluginRegistry.plugins.items() if value != None}
+
+                importAddons()
 
 #---------------------------------------------------
 
@@ -536,6 +581,28 @@ def removeContent(**kwargs) -> None:
     else:
         os.system(f"del /f {kwargs["args"][0]}")
 
+validInputs = ["needpypath", "pypath", "addondir"]
+validInputTypes = ["bool", "dir", "dir"]
+
+def changeConfig() -> None:
+
+    config = importFromJSON(Path.home().joinpath("config.json"))
+
+    inp = cli.input("Config Change? ").lower()
+
+    if validInputs.__contains__(inp):
+        validInputType = validInputTypes[validInputs.index(inp)]
+        if validInputType == "bool":
+            uinp = cli.input("t/f: ").lower()
+            val = True if uinp == "true" or uinp == "t" else False
+        elif validInputType == "dir":
+            val = cli.input("directory: ")
+            if not Path(val).is_dir():
+                cli.print(f"'{val}' is not a directory.")
+                return None
+        config[validInputs[validInputs.index(inp)]] = val
+        exportToJSON(config, Path.home().joinpath("config.json"))
+
 helpCommand = Command(["help"], lambdaWithKWArgsSetup(lambda kwargs: showHelp(commands, **kwargs)), {"name": "help", "description": "lets you know how to use a command and what that command does.", "has-kwargs": False})
 
 def showHelp(commands : list[Command], **kwargs) -> None:
@@ -545,7 +612,7 @@ def showHelp(commands : list[Command], **kwargs) -> None:
         return None
 
     if kwargs["args"][0] == "all" or kwargs["args"][0] == "*":
-        cli.print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.helpInfo["name"] for command in commands])}[/green]\n\tRun [yellow]help {escape("[command]")}[/yellow] to learn more.[/bold]")
+        cli.print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.names[0] for command in commands])}[/green]\n\tRun [yellow]help {escape("[command]")}[/yellow] to learn more.[/bold]")
 
     if kwargs["args"][0] == "*":
         cli.print("\n-------------------------------------------------------------------------")
@@ -555,6 +622,50 @@ def showHelp(commands : list[Command], **kwargs) -> None:
 
     if flatten(commandNames).__contains__(kwargs["args"][0]):
         commands[indexIntoLayeredList(commandNames, kwargs["args"][0])].help()
+
+def sysCommand(**kwargs) -> None:
+    os.system(kwargs["args"])
+
+def initRecording(comM: CommandManager) -> None:
+    def record(**kwargs):
+        global recordedCommands
+        if not needsArgsSetup("record", 1, "<=")(**kwargs):
+            return None
+
+        kwargs = booleanArgs(["l"], **kwargs)
+        kwargs = defaultArgs({"f": None}, **kwargs)
+
+        if kwargs["l"]:
+            cli.print("\n".join(recordedCommands))
+
+        if kwargs["f"] != None:
+            while True:
+                mode = cli.input("do you want to use the shell after the inputs? (y/n): ")
+                match mode.lower():
+                    case "y" | "yes":
+                        recordedCommands.append("startinput")
+                        break
+
+                    case "n" | "no":
+                        break
+
+            Path(kwargs["f"]).touch()
+            with open(kwargs["f"], "w") as file:
+                file.write("\n".join(recordedCommands))
+            return None
+
+        match kwargs["args"][0]:
+            case "start":
+                comM.recording = True
+
+            case "stop":
+                comM.recording = False
+
+            case "clear":
+                recordedCommands = []
+
+    comM.commands.append(Command(["record"], record, {"name": "record", "description": "Records Your commands to save as a .cmcs file.", "has-kwargs": True, "kwargs": {"-l": "Lists all currently recorded commands", "-f": "Saves the recorded commands in given filepath as a .cmcs file"}}))
+    comM.commandNames = [command.names for command in comM.commands]
 
 #--------------------
 
@@ -574,7 +685,7 @@ def initCommands() -> None:
     commands.append(Command(["vscode", "code"], openVSCode, {"name": "vscode", "description": "Opens the given file or folder in vscode.", "has-kwargs": False}))
     commands.append(Command(["website", "web"], openWebsite, {"name": "website", "description": "Opens the given websites in your default browser.", "has-kwargs": False}))
 
-    commands.append(Command(["wait", "sleep"], wait, {"name": "wait", "description": "Waits the given amount of time.", "has-kwargs": True, "kwargs": {"--format": "Takes the given argument and gives it a different unit of time: 'secs', 'mins'"}}))
+    commands.append(Command(["wait", "sleep"], wait, {"name": "sleep", "description": "Waits the given amount of time.", "has-kwargs": True, "kwargs": {"--format": "Takes the given argument and gives it a different unit of time: 'secs', 'mins'"}}))
     commands.append(Command(["notepad", "note", "txt"], openNotepad, {"name": "notepad", "description": "Opens a file in notepad.", "has-kwargs": False}))
 
     commands.append(Command(["execute", "start", "exe"], executeFile, {"name": "execute", "description": "Runs an executable file", "has-kwargs": False}, 'base-split'))
@@ -592,8 +703,10 @@ def initCommands() -> None:
     commands.append(Command(["webcut", "webc"], webcutWConfig, {"name": "webcut", "description": "Opens up a set website via a config.", "has-kwargs": False}))
     commands.append(Command(["version", "ver"], lambda: cli.print(f"[bold][red]{VERSION}[/bold][/red]"), {"name": "version", "description": "Prints the current version of the shell.", "has-kwargs": False}))
 
-
     commands.append(Command(["addons"], manageAddons, {"name": "addons", "description": "Manages all imported addons.", "has-kwargs": True, "kwargs": {"-l": "Lists the currently imported addons."}}))
+    commands.append(Command(["system", "sys"], sysCommand, {"name":"system", "description": "Runs the given system command (CMD).", "has-kwargs": False}, "base-split"))
+
+    commands.append(Command(["config"], changeConfig, {"name": "config", "description": "Changes the config file", "has-kwargs": False}))
     commands.append(helpCommand)
 
 
@@ -624,7 +737,7 @@ updateConfig()
 
 def changeToInterpreter(comM: CommandManager):
     commands[2].func = lambda: os.system("cls")
-    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), "Starts the user input of a .cmcs file."))
+    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), {"name": "startinput", "description": "Starts the user input of a .cmcs file.", "has-kwargs": False}))
     comM.commands = commands
     comM.commandNames = [command.names for command in comM.commands]
 
