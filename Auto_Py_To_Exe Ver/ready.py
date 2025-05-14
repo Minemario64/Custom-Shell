@@ -262,6 +262,7 @@ class CommandManager:
 
             case "base-split":
                 parse = userInput.split(" ", 1)
+                print(parse)
                 pui = (parse[0], {"args": parse[1]})
 
         if numOfNonDefaultArgs(command.func) == 0:
@@ -305,7 +306,11 @@ class Plugin(metaclass=PluginRegistry):
     def close(self):
         raise NotImplementedError
 
-def showStartingPrints(startup : bool = False) -> None:
+def showStartingPrints(startup : bool = False, **kwargs) -> None:
+    if not startup:
+        kwargs = booleanArgs(["r", "-reset"], **kwargs)
+        if kwargs["r"] == True or kwargs["-reset"] == True:
+            startup = True
     os.system("cls")
     if startup:
         cli.print(f"  Welcome to the Custom Shell\nBy: [green][bold]Minemario64[/bold][/green]   Ver: [bold][red]{VERSION}[/bold][/red]")
@@ -463,13 +468,13 @@ def execRunCom(filepath : Path, language : str) -> None:
             runPyFile(**{"args": filepath})
 
         case "bin" | "exe":
-            os.system(f"start {filepath}")
+            os.system(f"start '{filepath}'")
 
         case "web" | "website":
             os.system(f"start http://{filepath}")
 
         case "html":
-            os.system(f"start {filepath}")
+            os.system(f"start '{filepath}'")
 
 def runWConfig(**kwargs) -> None:
     if not needsArgsSetup("run", 1, "=")(**kwargs):
@@ -554,7 +559,7 @@ def openVSCode(**kwargs) -> None:
     if not needsArgsSetup("vscode", 1, "=")(**kwargs):
         return None
 
-    os.system(f'code {kwargs["args"][0]}')
+    os.system(f'code {kwargs["args"]}')
 
 def openWebsite(**kwargs) -> None:
     if not needsArgsSetup("website", 1)(**kwargs):
@@ -571,17 +576,16 @@ def wait(**kwargs) -> None:
 
     match kwargs["-format"]:
         case "secs" | "sec" | "s" | "seconds" | "second":
-            time.sleep(float(kwargs["args"][0]))
+            time.sleep(float(kwargs["args"]))
 
         case "mins" | "min" | "m" | "minutes" | "minute":
-            time.sleep(float(kwargs["args"][0]) * 60)
+            time.sleep(float(kwargs["args"]) * 60)
 
 def openNotepad(**kwargs) -> None:
     if not needsArgsSetup("vscode", 1, "<=")(**kwargs):
         return None
 
-
-    os.system(f'notepad{f' {kwargs["args"]}' if kwargs["args"] != None else ""}')
+    os.system(f'notepad{f' {kwargs["args"][0]}' if kwargs["args"] != None else ""}')
 
 def changeDir(**kwargs) -> None:
     global curdir
@@ -597,7 +601,7 @@ def executeFile(**kwargs) -> None:
         cli.print("The command execute needs an argument.")
         return None
 
-    os.system(f'start {kwargs["args"][0]}')
+    os.system(f'start {kwargs["args"]}')
 
 def runPyFile(**kwargs) -> None:
 
@@ -648,9 +652,9 @@ def removeContent(**kwargs) -> None:
     kwargs = booleanArgs(["rf"], **kwargs)
 
     if kwargs["rf"]:
-        os.system(f"rmdir /s {kwargs["args"][0]}")
+        os.system(f"rmdir /s {kwargs["args"]}")
     else:
-        os.system(f"del /f {kwargs["args"][0]}")
+        os.system(f"del /f {kwargs["args"]}")
 
 validInputs = ["needpypath", "pypath", "addondir"]
 validInputTypes = ["bool", "dir", "dir"]
@@ -778,6 +782,7 @@ def initCommands() -> None:
     commands.append(Command(["system", "sys"], sysCommand, {"name":"system", "description": "Runs the given system command (CMD).", "has-kwargs": False}, "base-split"))
 
     commands.append(Command(["config"], changeConfig, {"name": "config", "description": "Changes the config file", "has-kwargs": False}))
+    commands.append(Command(["restart"], lambda: showStartingPrints(True), {"name": "restart", "description": "Clears the terminal and loads the starting text.", "has-kwargs": False}))
     commands.append(helpCommand)
 
 
@@ -808,7 +813,7 @@ updateConfig()
 
 def changeToInterpreter(comM: CommandManager):
     commands[2].func = lambda: os.system("cls")
-    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), {"name": "startinput", "description": "Starts the user input of a .cmcs file.", "has-kwargs": False}))
+    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), {"name": "startinput", "description": "Starts the user input from a .cmcs file.", "has-kwargs": False}))
     comM.commands = commands
     comM.commandNames = [command.names for command in comM.commands]
 
