@@ -1,4 +1,0 @@
-def test() -> None:
-    print("Hello, World. I am a tester.")
-
-commands.append(Command(["test"], test, "Example addon."))

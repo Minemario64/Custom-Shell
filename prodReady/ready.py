@@ -16,14 +16,871 @@ from pathlib import Path
 from json import load, dumps, dump
 import inspect
 import re
-from projectManager import *
-from stdouts import *
-from caesarCypher import *
+def PMVer(sep: str) -> str:
+    ver = [1, 0, 0, ""]
+    version = (".".join([str(num) for num in ver[0:3]]), ver[3])
+    return f"{version[0]}{sep}{version[1]}" if version[1] != '' else version[0]
+
+
+
+from pathlib import Path
+from json import load, dumps, dump
+import win32file
+import win32con
+import os
+
+def importFromJSON(filename: str | Path) -> dict | None:
+    filepath = Path(filename) if isinstance(filename, str) else filename
+    if filepath.exists():
+        with open(filepath, "r") as file:
+            return load(file)
+
+def exportToJSON(data: dict | list, filename: str | Path, indent : bool = True) -> None:
+    filepath = Path(filename) if isinstance(filename, str) else filename
+    if filepath.exists():
+        if indent:
+            with open(filepath, "w") as file:
+                file.write(dumps(data, indent=4))
+        else:
+            with open(filepath, "w") as file:
+                dump(data, file)
+
+def flatten(l : list) -> list:
+    newList : list = []
+    for item in l:
+        if not isinstance(item, list):
+            newList.append(item)
+        else:
+            for extraItem in flatten(item):
+                newList.append(extraItem)
+    return newList
+
+def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int | None:
+    idx : int = 0 if start else idxStart
+    for item in l:
+        if (item == targetVal) and (type(item) == type(targetVal)):
+            return idx
+        if isinstance(item, list):
+            itemResult = indexIntoLayeredList(item, targetVal, False, idx)
+            if isinstance(itemResult, int):
+                return itemResult
+        idx += 1 if start else 0
+    return None
+
+def hidePath(path: Path) -> None:
+   if path.exists():
+       flags = win32file.GetFileAttributes(str(path))
+       win32file.SetFileAttributes(str(path), win32con.FILE_ATTRIBUTE_HIDDEN | flags)
+
+home = Path.home()
+globalCommandsPath = home.joinpath(".codeCommands/")
+globalTemplatesPath = home.joinpath(".codeTemplates/")
+configPath = globalTemplatesPath.joinpath(".config")
+
+LANG_LOOKUP = {
+    "python": "python ",
+    "exe": "./",
+}
+
+class Language:
+
+    def __init__(self, name: str, fileExtension: str) -> None:
+        self.name = name
+        self.fileExtension = fileExtension
+
+    @property
+    def commandsPath(self) -> Path:
+        return globalCommandsPath.joinpath(self.fileExtension)
+
+    @property
+    def templatesPath(self) -> Path:
+        return globalTemplatesPath.joinpath(self.fileExtension)
+
+    def init(self) -> None:
+        self.commandsPath.mkdir(exist_ok=True)
+        self.commandsPath.joinpath("metadata.json").touch()
+        exportToJSON({}, self.commandsPath.joinpath("metadata.json"))
+
+        self.templatesPath.mkdir(exist_ok=True)
+        self.templatesPath.joinpath("default").mkdir(exist_ok=True)
+
+    def makeTemplate(self, directory: Path, name: str = "default", overwrite: bool = True) -> bool:
+        """Makes a language template
+
+        Args:
+            directory (Path): The directory of the template to copy.
+            name (str, optional): The name of the template to save as. Defaults to "default".
+            overwrite (bool, optional): Overwrite the template if there is already one with the same name. Defaults to True.
+
+        Returns:
+            bool: If the template was able to be added.
+        """
+        templatePath = self.templatesPath.joinpath(name)
+        if templatePath.exists():
+            if overwrite:
+                os.system(f'powershell Remove-Item -Path "{templatePath}" -Recurse -Force')
+
+            else:
+                return False
+
+        templatePath.mkdir()
+        os.system(f'powershell Copy-Item -Path "{directory}" -Destination "{templatePath}" -Recurse')
+
+    def makeProject(self, projectPath: Path, templateName: str = 'default') -> None:
+        """Makes a project from a given template
+
+        Args:
+            projectPath (Path): The path of the project
+            templateName (str, optional): The name of the template to copy from. Defaults to 'default'.
+        """
+        if not self.templatesPath.joinpath(templateName).exists():
+            raise ValueError("Cannot make a project with a template that doesn't exist")
+
+        os.system(f'powershell Copy-Item -Path "{self.templatesPath.joinpath(templateName)}" -Destination "{projectPath}" -Recurse')
+
+        with open(f"{projectPath.absolute().resolve()}:language", "x", encoding="utf-8") as stream:
+            stream.write(f"{PMVer("-")}\nLanguage: {self.name}")
+
+    def addCommand(self, filepath: Path, language: str, nicknames: list[str]) -> None:
+        with filepath.open("rb") as file:
+            content = file.read()
+
+        with self.commandsPath.joinpath(filepath.name).open("wb") as file:
+            file.write(content)
+
+        json = importFromJSON(self.commandsPath.joinpath('metadata.json'))
+        json[filepath.name] = {"names": [filepath.name] + nicknames, "language": language}
+
+        exportToJSON(json, self.commandsPath.joinpath("metadata.json"))
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return f"<Language: {self.name} | .{self.fileExtension}>"
+
+def runCommand(command: str, language: Language, args: list[str]) -> bool | None:
+    names = [v["names"] for v in importFromJSON(language.commandsPath.joinpath("metadata.json")).values()]
+    objs = list(importFromJSON(language.commandsPath.joinpath("metadata.json")).items())
+    if not flatten(names).__contains__(command):
+        return False
+
+    obj = objs[indexIntoLayeredList(names, command)]
+    os.system(f"powershell {LANG_LOOKUP[obj[1]["language"]]}{language.commandsPath.joinpath(obj[0]).resolve()} {" ".join(args)}")
+
+
+if not globalCommandsPath.exists():
+    globalCommandsPath.mkdir()
+    hidePath(globalCommandsPath)
+
+if not globalTemplatesPath.exists():
+    globalTemplatesPath.mkdir()
+    hidePath(globalTemplatesPath)
+
+defaultConfig = {"languages": {}, "command-languages": {}}
+
+def updateConfig() -> None:
+    config = importFromJSON(configPath)
+    result = {}
+    for setting, default in defaultConfig.items():
+        try:
+            config[setting]
+            result[setting] = config[setting]
+
+        except KeyError:
+            result[setting] = default
+
+    exportToJSON(result, configPath)
+
+if not configPath.exists():
+    configPath.touch()
+    exportToJSON(defaultConfig, configPath)
+
+else:
+    updateConfig()
+
+LANG_LOOKUP = LANG_LOOKUP | importFromJSON(configPath)["command-languages"]
+
+langs: dict[str, Language] = {name: Language(name, ext) for name, ext in importFromJSON(configPath)["languages"].items()}
+
+for lang in langs.values():
+    if not (lang.commandsPath.exists() and lang.commandsPath.exists()):
+        lang.init()
+import sys
+from pathlib import Path
+import os
+
+class Stdout:
+    style: bool = False
+
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def write(self, data: str):
+        raise NotImplementedError
+
+    def clear(self):
+        raise NotImplementedError
+
+    def __close__(self):
+        raise NotImplementedError
+
+    def flush(self):
+        raise NotImplementedError
+
+    def __eq__(self, other):
+        return self.__class__.__name__ == other.__class__.__name__
+
+class basicConsoleStdout(Stdout):
+    style: bool = False
+
+    def __init__(self) -> None:
+        pass
+
+    def write(self, data: str):
+        sys.__stdout__.write(data)
+
+    def clear(self):
+        os.system("powershell clear")
+
+    def flush(self):
+        sys.__stdout__.flush()
+
+    def __close__(self):
+        pass
+
+class fileStdout(Stdout):
+    style: bool = False
+
+    def __init__(self, file: str, mode: int = 0) -> None:
+        self.filepath = Path(file).resolve()
+        if not self.filepath.exists():
+            self.stream = self.filepath.open("x")
+
+        if mode == 1:
+            self.stream = self.filepath.open("a")
+
+        self.stream = self.filepath.open("w")
+
+    def write(self, data: str):
+        self.stream.write(data)
+
+    def clear(self):
+        self.stream.truncate(0)
+
+    def flush(self):
+        self.stream.flush()
+
+    def __close__(self):
+        self.stream.close()
+
+class strStdout(Stdout):
+    style: bool = False
+
+    def __init__(self) -> None:
+        self.text = ""
+
+    def write(self, data: str):
+        self.text += data
+
+    def clear(self):
+        self.text = ""
+
+    def flush(self):
+        pass
+
+    def __close__(self):
+        return self.text
+
+class nullStdout(Stdout):
+    style: bool = False
+
+    def __init__(self):
+        pass
+
+    def write(self, data: str):
+        pass
+
+    def clear(self):
+        pass
+
+    def flush(self):
+        pass
+
+    def __close__(self):
+        pass
+
+charLists = {
+    "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "alphanumeric": "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+    "qwerty": "QWERTYUIOPASDFGHJKLZXCVBNM",
+    "numeric": "1234567890"
+}
+
+def customCypherPreset(charListName : str | list[str], turns : int, *extra, keepCase : bool = True, addInfo : bool = False, getInfo : bool = True, customCharList : bool = False) -> callable:
+    def customCypher(text : str):
+        if getInfo:
+            return [cypher(text, charListName, turns, keepCase=keepCase, addInfo=addInfo, customCharList=customCharList), {"characterListName": charListName, "turns": turns} if customCharList else {"characterList": charListName, "turns": turns}]
+        else:
+            return cypher(text, charListName, turns, keepCase=keepCase, addInfo=addInfo, customCharList=customCharList)
+
+    def customDeCypher(text : str):
+        if getInfo:
+            return [deCypher(text, charListName, turns, keepCase=keepCase, addInfo=addInfo, customCharList=customCharList), {"characterListName": charListName, "turns": turns} if customCharList else {"characterList": charListName, "turns": turns}]
+        else:
+            return deCypher(text, charListName, turns, keepCase=keepCase, addInfo=addInfo, customCharList=customCharList)
+
+    return customCypher, customDeCypher
+
+def cypher(text : str, charListID : str | list[str] = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : bool = False) -> str:
+    if not customCharList:
+        charList = [char for char in charLists[charListID]]
+    else:
+        charList = charListID
+    newText = ""
+    for char in text:
+        if char.islower() and keepCase:
+            case = 0
+        else:
+            case = 1
+        if charList.__contains__(char.upper()):
+            charIdx = charList.index(char.upper())
+            charIdx += turns
+            charIdx %= len(charList)
+            newText += charList[charIdx].lower() if case == 0 else charList[charIdx]
+        else:
+            newText += char
+    if addInfo:
+        newText += f"\nturns: {turns}   Character List: {charListID}\n{" " * len(f"turns: {turns}  ")}{"-" * len(f" Character List: {charListID} ")}\n{" " * len(f"turns: {turns}  ")}{charList}"
+    return newText
+
+def deCypher(text : str, charListID : str | list[str] = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : bool = False) -> str:
+    if not customCharList:
+        charList = [char for char in charLists[charListID]]
+    else:
+        charList = charListID
+    newText = ""
+    for char in text:
+        if char.islower() and keepCase:
+            case = 0
+        else:
+            case = 1
+        if charList.__contains__(char.upper()):
+            charIdx = charList.index(char.upper())
+            charIdx -= turns
+            charIdx %= len(charList)
+            newText += charList[charIdx].lower() if case == 0 else charList[charIdx]
+        else:
+            newText += char
+    if addInfo:
+        newText += f"\nturns: {turns}   Character List: {charListID}\n{" " * len(f"turns: {turns}  ")}{"-" * len(f" Character List: {charListID} ")}\n{" " * len(f"turns: {turns}  ")}{charList}"
+    return newText
+
+puzzleCypher, puzzleDeCypher = customCypherPreset("alphabet", 2, keepCase=True, addInfo=False, getInfo=True)
+
+codeCypher, codeDeCypher = customCypherPreset("alphanumeric", 2, keepCase=True, addInfo=False, getInfo=True)
+
+capCypher, capDeCypher = customCypherPreset("alphabet", 2, keepCase=False, addInfo=False, getInfo=False)
 from typing import Literal
-from varTypes import *
+import struct
+from pathlib import Path
+
+class TypeRegistry(type):
+    types: dict = {}
+    nicknames: dict[str:str] = {}
+
+    def __new__(cls, name, bases, dct):
+
+        try:
+            TypeRegistry.types[name]
+
+        except KeyError:
+            newTypeClass = super().__new__(cls, name, bases,  dct)
+
+            try:
+                TypeRegistry.nicknames[dct['name']] = name
+                TypeRegistry.types[name] = newTypeClass
+
+            except KeyError:
+                pass
+
+            return newTypeClass
+
+class VarType(metaclass=TypeRegistry):
+
+    def __init__(self, text: str) -> None:
+        raise NotImplementedError
+
+    def __str__(self) -> str:
+        raise NotImplementedError
+
+    def __repr__(self) -> str:
+        raise NotImplementedError
+
+    def __json__(self) -> bytes:
+        raise NotImplementedError
+
+    @staticmethod
+    def __jload__(data: bytes) -> str:
+        raise NotImplementedError
+
+class StrVar(VarType):
+    name: str = 'str'
+
+    def __init__(self, text: str):
+        self.value = text
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return f"'{self.value}'"
+
+    def __json__(self) -> bytes:
+        return bytes(self.value, encoding="utf-8")
+
+    @staticmethod
+    def __jload__(data: bytes) -> str:
+        return data.decode()
+
+class PathVar(VarType):
+    name: str = 'path'
+
+    def __init__(self, text: str) -> None:
+        self.value = Path(text).resolve()
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __json__(self) -> bytes:
+        return bytes(str(self.value), encoding="utf-8")
+
+    @staticmethod
+    def __jload__(data: bytes) -> str:
+        return data.decode()
+
+class IntVar(VarType):
+    name: str = 'int'
+
+    def __init__(self, text: str) -> None:
+        self.value = int(text)
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __json__(self) -> bytes:
+        return bytes([self.value])
+
+    @staticmethod
+    def __jload__(data: bytes) -> str:
+        return str(int(data.hex(), 16))
+
+class FloatVar(VarType):
+    name: str = 'float'
+
+    def __init__(self, text: str) -> None:
+        self.value = float(text)
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __json__(self) -> bytes:
+        return struct.pack("d", self.value)
+
+    @staticmethod
+    def __jload__(data: bytes) -> str:
+        return str(struct.unpack('d', data))
 import shutil
 if GUIC:
-    from guic import *
+    import threading as thr
+    from typing import Literal
+    import atexit
+    
+    class ConsoleQueuePacket:
+    
+        def __init__(self, mode: Literal['print', 'input', 'clear'], /, *args, **parameters) -> None:
+            self.mode = mode
+            self.args = args
+            if mode == 'print':
+                self.parameters = parameters if parameters else {'sep': ' ', 'end': '\n', 'style': None}
+            else:
+                self.parameters = parameters
+    
+    class ConsoleQueue:
+    
+        def __init__(self) -> None:
+            self.queue: list[ConsoleQueuePacket] = []
+            self.returnQueue: str | None = None
+    
+        def __len__(self) -> int:
+            return len(self.queue)
+    
+        def addQueue(self, packet: ConsoleQueuePacket) -> None:
+            self.queue.append(packet)
+    
+        def getItem(self) -> ConsoleQueuePacket:
+            return self.queue.pop(0)
+    
+        def getReturnedStr(self) -> str | None:
+            return self.returnQueue
+    
+    class KillFlag:
+    
+        def __init__(self) -> None:
+            self._flag = False
+    
+        def kill(self) -> None:
+            self._flag = True
+    
+        def is_alive(self) -> bool:
+            return not self._flag
+    
+    def parseStyles(styles: str) -> list[str]:
+        result: list[str] = []
+        bg: bool = False
+        for style in [style for style in styles.split(" ") if style != '']:
+            match style:
+                case 'underline':
+                    if len(result) == 0:
+                        result.append('underline')
+                        continue
+    
+                    if result[-1] == 'default':
+                        result[-1] = 'underline'
+                        continue
+    
+                    result[-1] = f"{result[-1]}-underline"
+    
+                case 'on':
+                    bg = True
+    
+                case _:
+                    if bg:
+                        result.append(f"{style}-bg")
+                        bg = False
+                        continue
+    
+                    result.append(style)
+    
+        return result
+    
+    def parseColoredPrint(text: str, globalStyle: str = '') -> list[str | tuple[str, str]]:
+        instyle = False
+        style = ""
+        styles = ['']
+    
+        for char in text:
+            if char == '[':
+                instyle = True
+            elif char == ']':
+                instyle = False
+                if style.startswith("/"):
+                    if styles[-1][0].__contains__(style.removeprefix("/")):
+                        if not styles[-1][0] == style.removeprefix("/"):
+                            styles.append([styles[-1][0].replace(style.removeprefix("/"), " ").strip(' '), ''])
+                        else:
+                            styles.append('')
+    
+                elif isinstance(styles[-1], list):
+                    if styles[-1][1] == '':
+                        styles[-1][0] += f" {style}"
+                    else:
+                        styles.append([f"{styles[-1][0]} {style}", ''])
+                else:
+                    styles.append([f'{f'{globalStyle} ' if globalStyle != '' else ''}{style}', ''])
+                style = ''
+            else:
+                if instyle:
+                    style += char
+                else:
+                    if isinstance(styles[-1], list):
+                        styles[-1][1] += char
+                    else:
+                        styles[-1] += char
+    
+        styles = [tuple(stylePart) if isinstance(stylePart, list) else stylePart for stylePart in styles]
+        if globalStyle != '':
+            styles = [(globalStyle, text) if isinstance(text, str) else text for text in styles]
+    
+        return styles
+    
+    tagColors: tuple[dict[str: str], dict[str: str]] = ({'red': '#DF2F00', 'green': '#20D220', "blue": '#0A70FF', 'yellow': '#CFCF00', 'cyan': "#00CAC0", "orange": "#CF7000", "magenta": "#B000B0", "purple": "#802AD0", "white": "#DDD", "lime": "#5C5", 'black': '#000000', 'grey': '#777'},
+                                                        {'red': '#FF4D22', 'green': '#40F240', "blue": '#10A0F0', 'yellow': "#FFFF00", 'cyan': "#1AFFCF", "orange": "#F0A000", "magenta": "#EA00EA", "purple": "#A000F0", "white": "#FFF", "lime": "#9F9", 'black': '#2A2A2A', 'grey': '#AAA'})
+    
+    from pathlib import Path
+    import re
+    
+    class Console:
+    
+        _allConsoles: list = []
+    
+        @atexit.register
+        def closeAllConsoles():
+            for console in Console._allConsoles:
+                console.closeConsole()
+    
+        def __init__(self, consoleName: str = 'Console', /, geometry: str = '800x450', icon: Path | None = None, bgColor: str = '#191919', defaultTextColor: str = '#FFF', font = ('Consolas', 12), boldStyle: Literal['width', 'brightness'] = 'width', colorTheme: tuple[dict[str: str], dict[str: str]] | None = None) -> None:
+            def is_hexColor(s: str) -> bool:
+                hex_pattern = re.compile(r"^#([0-9A-Fa-f]{3}){1,2}$")
+                return hex_pattern.match(s)
+    
+            if not is_hexColor(bgColor):
+                raise ValueError('bgColor needs to be a valid hex color value')
+    
+            if not is_hexColor(defaultTextColor):
+                raise ValueError('defaultTextColor needs to be a valid hex color value')
+    
+            Console._allConsoles.append(self)
+    
+            self.__inputTextStack__: list[str] = []
+            self.__inputString__: str = ""
+            self.__getInput__: bool = False
+    
+            def _consoleThread(queue: ConsoleQueue, killFlag: KillFlag) -> None:
+                import tkinter as tk
+                from typing import Callable
+                import os
+                import sys
+    
+                def TextBoxEnable(textBox: tk.Text):
+                    def decorator(func: Callable):
+                        def wrapper(*args, **kwargs):
+                                textBox.config(state='normal')
+                                result = func(*args, **kwargs)
+                                textBox.config(state='disabled')
+                                if result != None:
+                                    return result
+    
+                        return wrapper
+                    return decorator
+    
+                def on_close():
+                    root.destroy()
+                    os._exit(0)
+    
+                root = tk.Tk()
+                if icon != None:
+                    root.iconbitmap(str(icon.absolute()))
+                root.protocol("WM_DELETE_WINDOW", on_close)
+                root.geometry(geometry)
+                root.title(consoleName)
+                root.config(bg=bgColor)
+    
+                textBox = tk.Text(root, bg=bgColor, fg=defaultTextColor, font=font, insertbackground=defaultTextColor, state='disabled')
+                if isinstance(colorTheme, tuple):
+                    colors = (tagColors[0] | (colorTheme[0] if isinstance(colorTheme[0], dict) else {}), tagColors[1] | (colorTheme[1] if isinstance(colorTheme[1], dict) else {}))
+    
+                else:
+                    colors = tagColors
+    
+                for name, colorVal in colors[0].items():
+                    textBox.tag_config(name, foreground=colorVal)
+                    textBox.tag_config(f"{name}-bg", background=colorVal)
+                    textBox.tag_config(f"{name}-underline", underlinefg=colorVal, underline=True)
+    
+                match boldStyle:
+                    case 'width':
+                        textBox.tag_config("bold", font=font + ('bold',))
+    
+                    case 'brightness':
+                        for name, colorVal in colors[1].items():
+                            textBox.tag_config(f"bright-{name}", foreground=colorVal)
+                            textBox.tag_config(f"bright-{name}-bg", background=colorVal)
+                            textBox.tag_config(f"bright-{name}-underline", underlinefg=colorVal, underline=True)
+    
+                textBox.tag_config('underline', underline=True)
+    
+                textBox.pack(fill=tk.BOTH, expand=True)
+    
+                def parseStyles(styles: str) -> list[str]:
+                    result: list[str] = []
+                    bg: bool = False
+                    bold: bool = False
+                    for style in [style for style in styles.split(" ") if style != '']:
+                        match style:
+                            case 'underline':
+                                if len(result) == 0:
+                                    result.append('underline')
+                                    continue
+    
+                                if result[-1] == 'default':
+                                    result[-1] = 'underline'
+                                    continue
+    
+                                result[-1] = f"{result[-1]}-underline"
+    
+                            case 'on':
+                                bg = True
+    
+                            case 'default':
+                                bold = False
+    
+                            case 'bold':
+                                bold = True
+    
+                            case _:
+                                if bg:
+                                    if bold:
+                                        result.append(f"bright-{style}-bg")
+    
+                                    else:
+                                        result.append(f"{style}-bg")
+    
+                                    bg = False
+                                    continue
+    
+                                if bold:
+                                    result.append(f"bright-{style}")
+    
+                                else:
+                                    result.append(style)
+    
+                    return result
+    
+                class TkTextBoxStdout:
+    
+                    def __init__(self, TextBox: tk.Text) -> None:
+                        self.textBox = TextBox
+    
+                    @TextBoxEnable(textBox)
+                    def write(self, text: str, tags: str | None = None) -> None:
+                        if tags != None and (text.__contains__('\n') and tags.split(' ').__contains__("on")):
+                            for line in [ln for ln in text.split("\n") if ln != '']:
+                                self.textBox.insert(tk.END, line, parseStyles(tags) if tags != None else None)
+                                self.textBox.insert(tk.END, '\n')
+                        else:
+                            self.textBox.insert(tk.END, text, parseStyles(tags) if tags != None else None)
+                        self.textBox.see(tk.END)
+    
+                    @TextBoxEnable(textBox)
+                    def clear(self) -> None:
+                        self.textBox.delete("1.0", tk.END)
+    
+                    @TextBoxEnable(textBox)
+                    def delete(self, index1, index2) -> None:
+                        self.textBox.delete(index1, index2)
+    
+                    def flush(self) -> None:
+                        pass
+    
+                sys.stdout = TkTextBoxStdout(textBox)
+    
+                def FinalizeInput(stack: list[str]) -> str:
+                    result = ''
+                    for item in stack:
+                        if item == "/-":
+                            result = result[0:-1]
+    
+                        else:
+                            result += item
+    
+                    return result
+    
+                def on_key(event: tk.Event):
+                    match event.keycode:
+                        case 13:
+                            self.__inputTextStack__.append('\n')
+    
+                        case 8:
+                            self.__inputTextStack__.append("/-")
+    
+                        case _:
+                            self.__inputTextStack__.append(event.char)
+    
+                    if self.__getInput__:
+                        if self.__inputTextStack__[-1] != '/-':
+                            sys.stdout.write(self.__inputTextStack__[-1])
+                            self.__inputString__ += self.__inputTextStack__[-1]
+                        else:
+                            if self.__inputString__ != '':
+                                sys.stdout.delete("end-2c", "end")
+                            self.__inputString__ = self.__inputString__[0:-1]
+    
+                        if self.__inputTextStack__[-1] == "\n":
+                            self.__getInput__ = False
+                        self.__inputTextStack__.clear()
+    
+                textBox.bind("<Key>", on_key)
+    
+                def print(*args, sep: str = " ", end: str = "\n", style: str = '') -> None:
+                    parsedText = parseColoredPrint(sep.join(map(str, args)) + end, style)
+                    if len(parsedText) > 1:
+                        for item in parsedText:
+                            if isinstance(item, str):
+                                sys.stdout.write(item, style)
+    
+                            elif isinstance(item, tuple):
+                                sys.stdout.write(item[1], item[0])
+    
+                    elif isinstance(parsedText[0], tuple):
+                        sys.stdout.write(parsedText[0][1], parsedText[0][0])
+    
+                    else:
+                        sys.stdout.write(parsedText[0])
+    
+                def input(initialText: str, /) -> str:
+                    sys.stdout.write(initialText)
+                    if self.__inputTextStack__.__contains__("\n"):
+                        sys.stdout.write(FinalizeInput(self.__inputTextStack__[0:self.__inputTextStack__.index("\n") + 1]))
+                        self.__inputString__ = FinalizeInput(self.__inputTextStack__[0:self.__inputTextStack__.index("\n") + 1])
+                        self.__inputTextStack__ = self.__inputTextStack__[self.__inputTextStack__.index("\n")::]
+                    else:
+                        sys.stdout.write(FinalizeInput(self.__inputTextStack__))
+                        self.__inputString__ = FinalizeInput(self.__inputTextStack__)
+                        self.__getInput__ = True
+    
+                        while self.__getInput__:
+                            root.update()
+    
+                    return self.__inputString__
+    
+                while killFlag.is_alive():
+                    if len(queue) > 0:
+                        item = queue.getItem()
+                        match item.mode:
+                            case "print":
+                                print(*item.args, **item.parameters)
+    
+                            case "input":
+                                queue.returnQueue = input(item.args[0])
+                                self.__inputString__ = ''
+    
+                            case 'clear':
+                                sys.stdout.clear()
+                    root.update()
+    
+            self.Queue = ConsoleQueue()
+            self.killThreadFlag = KillFlag()
+    
+            self._console = thr.Thread(target=_consoleThread, args=(self.Queue, self.killThreadFlag))
+            self._console.daemon = True
+            self._console.start()
+    
+        def closeConsole(self) -> None:
+            self.killThreadFlag.kill()
+            self._console.join()
+    
+        def print(self, *args, sep: str = " ", end: str = "\n", style: str | None = None) -> None:
+            self.Queue.addQueue(ConsoleQueuePacket("print", *args, sep=sep, end=end, style=style if isinstance(style, str) else ''))
+    
+        def input(self, text: str, /) -> str:
+            self.Queue.addQueue(ConsoleQueuePacket("input", text, ''))
+            self.Queue.returnQueue = None
+            while not self.Queue.returnQueue:
+                pass
+            return self.Queue.returnQueue.removesuffix("\n")
+    
+        def clear(self) -> None:
+            self.Queue.addQueue(ConsoleQueuePacket('clear'))
 import socket as ip
 
 heldCommands: list[list] = []
@@ -401,9 +1258,8 @@ class CommandManager:
             userInput, stdoutStr = (text.strip(" ") for text in userInput.split(">", 1))
             stdout = self.parseStdout(stdoutStr)
 
-        if flatten(self.commandNames).__contains__(userInput.split(" ", 1)[0].lower()):
+        if flatten(self.commandNames).__contains__(userInput.split(" ", 1)[0]):
             command : Command = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0].lower())]
-
         else:
             if not userInput.split(" ", 1)[0].startswith("alias"):
                 sessionVarPattern = re.compile(r"^[a-z]* \$[a-zA-Z0123456789-_+]* *= *.*$")
@@ -1223,7 +2079,7 @@ def initCommands() -> None:
     commands.append(Command(["cat", "read", "printf"], printFile, {"name": "read-file", "description": "Prints the contents of a file.", "has-kwargs": False}))
 
     commands.append(Command(["clear", "cls"], showStartingPrints, {"name": "clear", "description": "Clears the terminal.", "has-kwargs": True, "kwargs": {"-r": "Loads the starting text after clearing the screen."}}))
-    commands.append(Command(["list", "ls"], listdir, {"name": "list", "description": "Lists all files in the current directory.", "has-kwargs": True, "kwargs": {"-ps": "Runs the powershell version of ls instead of the shell's version", "-t": "Filter to both files and folders 'all', only files 'files', or only folders 'folders'", "--folder-color": "Styles the color of the names of the folders", "--file-color": "Styles the color of the names of the files", "-a / --all": "Lists all files even if they are hidden", "-nq / --noquote": "Doesn't add quotes to directory names if they have spaces"}}))
+    commands.append(Command(["list", "ls"], listdir, {"name": "list", "description": "Lists all files in the current directory.", "has-kwargs": True, "kwargs": {"-ps": "Runs the powershell version of ls instead of the shell's version", "-t": "Filter to both files and folders 'all', only files 'files', or only folders 'folders'", "--folder-color": "Styles the color of the names of the folders", "--file-color": "Styles the color of the names of the files"}}))
 
     commands.append(Command(["makefile", "mkf", "touch"], makeFile, {"name": "touch", "description": "Makes files.", "has-kwargs": False}))
     commands.append(Command(["makedir", "mkdir"], makeDir, {"name": "makedir", "description": "Makes directories.", "has-kwargs": False}))
@@ -1285,3 +2141,43 @@ configUpdates = {"comm.aliases": "{alias: command for alias, command in importFr
                  "comm.vars": "ENVIRONMENT_VARS | {f\"%{dct[\"name\"]}\": TypeRegistry.types[TypeRegistry.nicknames[dct['type']]](TypeRegistry.types[TypeRegistry.nicknames[dct['type']]].__jload__(jsonTypesToBytes(dct[\"data\"]))) for dct in importFromJSON(jsonPath)['vars']}",
                  "$func": "comm.run('addons restart all')"
 }
+import sys
+
+initRecording(comm)
+
+def main():
+    showStartingPrints(True)
+    release()
+    inputLoop(comm)
+
+if __name__ == "__main__":
+    sysArgv = [arg for arg in sys.argv[1:] if not arg.__contains__("-")]
+    match len(sysArgv):
+        case 0:
+            main()
+
+        case 1:
+            os.chdir(cwd)
+            path = Path(sysArgv[0]).resolve()
+            os.chdir(curdir)
+
+            if path.is_file():
+                changeToInterpreter(comm)
+                release()
+                runShellFile(path)
+
+            elif path.is_dir():
+                comm.run(f"cd {path}")
+                main()
+
+            else:
+                comm.run(sysArgv[0])
+                if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep"):
+                    main()
+
+        case _:
+            if not DEBUG:
+                print(f"Usage: 'Custom-Shell {Version(" ")}.exe' OR 'Custom-Shell {Version(" ")}.exe' <file.csh>")
+
+            else:
+                print(f"Usage: python {__file__} OR python {__file__} <file.csh> OR {__file__} <directory> OR {__file__} <command>")
