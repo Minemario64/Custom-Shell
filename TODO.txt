@@ -1,0 +1,26 @@
+Custom-Shell TODO Updates
+--------------------------
+
+COMMANDS:
+---------
+- cps : Copy files matching to a glob pattern to a target dir (glob is like "*.txt")
+- calc : Evaluate Mathematic Expressions
+- ssh : SSH into a host, and go into Custom-Shell if possible
+- sshf : SSH into a host with IP fallback, and go into Custom-Shell if possible
+- todo : Todo manager
+- timer : Run a command after a certain amount of time (and notify)
+- encr : Encrypt and Decrypt files
+- pathviz : Render a dir tree diagram in ascii or HTML
+- archivz : Create compressed archives with configurable presets
+- trash : Move files into the system trash
+- diffy : show colorful, side-by-side diffs with highlights
+- serve : Launch an HTTP server
+- extract : Auto-extract archives
+- dups : Find duplicate files by checksum
+- meminfo : Shows detailed memory usage, caches, and swap stats
+
+FEATURES:
+---------
+- Directory Based Plugins with more features
+- CSVim Integration
+- GUI Console C++ Version

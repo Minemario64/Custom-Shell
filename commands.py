@@ -4,16 +4,12 @@ version = (".".join([str(num) for num in ver[0:3]]), ver[3])
 def Version(sep: str) -> str:
     return f"{version[0]}{sep}{version[1]}" if version[1] != '' else version[0]
 
-DEBUG: bool = True
-GUIC: bool = False
-
 import os
 import time
-if not GUIC:
-    from rich.console import Console
-    from rich.text import Text
+from rich.console import Console
 from pathlib import Path
 from json import load, dumps, dump
+import json.decoder as JSONDecoder
 import inspect
 import re
 from projectManager import *
@@ -21,10 +17,25 @@ from stdouts import *
 from caesarCypher import *
 from typing import Literal
 from varTypes import *
-import shutil
-if GUIC:
-    from guic import *
+from asciiart import display, TERMINAL_WIDTH
+from stats import SystemStats
 import socket as ip
+from stats import SystemStats
+
+
+# GLOBAL SETTINGS
+DEV: bool = True
+REPLACE_V2: bool = False
+
+if ((sys.argv[1:].__contains__("-nd") or sys.argv[1:].__contains__("--nodebug")) or __name__ == "__main__") or not DEV:
+    DEBUG: bool = False
+
+else:
+    DEBUG: bool = True
+
+
+if not sys.argv[1:].__contains__("--version"):
+    HOSTNAME = SystemStats()['hostname']
 
 heldCommands: list[list] = []
 stdout = basicConsoleStdout()
@@ -126,6 +137,8 @@ class ConsoleStdout(basicConsoleStdout):
 def removeRichStyling(text: str) -> None:
     return "".join([l[0] for l in [text.split("[") for text in text.split("]")]])
 
+OGPrint = print
+
 def print(*textArgs, sep: str = " ", end: str = "\n", style: str | None = None, flush: bool = False) -> None:
     output = sep.join(map(str, textArgs)) + end
     if stdout.__class__.style:
@@ -143,8 +156,6 @@ def print(*textArgs, sep: str = " ", end: str = "\n", style: str | None = None, 
 
 jsonTypesToBytes = lambda data, sep=" ": bytes([int(binStr, 2) for binStr in data.split(sep)])
 
-TERMINAL_WIDTH = shutil.get_terminal_size().columns
-
 curdir = Path.home()
 cwd = Path.cwd()
 pyPath = Path(__file__).parent if DEBUG else Path.cwd()
@@ -157,7 +168,13 @@ configTypes = {"~:Home": "bool", "Auto-Highlighting": "bool", "needpypath": "boo
 configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String"}
 
 def updateConfig() -> None:
-    config = importFromJSON(jsonPath)
+    try:
+        config = importFromJSON(jsonPath)
+
+    except JSONDecoder.JSONDecodeError as e:
+        print(f"\033[1;91mERROR\033[0m\033[31m: Could not decode the Custom-Shell config file -- {repr(e).removeprefix("JSONDecodeError(\"").removesuffix("\")")}\033[0m")
+        os._exit(0)
+
     result = {}
     for setting, default in configExport.items():
         try:
@@ -171,8 +188,8 @@ def updateConfig() -> None:
 
 if not jsonPath.exists():
     jsonPath.touch()
-    if cwd.joinpath(".config").exists():
-        json = importFromJSON(cwd.joinpath(".config"))
+    if cwd.joinpath(".csconfig").exists():
+        json = importFromJSON(cwd.joinpath(".csconfig"))
         exportToJSON(json, jsonPath)
         updateConfig()
 
@@ -185,16 +202,16 @@ else:
 envVars = {
     "FILEDIR": PathVar(str(pyPath)),
     "USER": StrVar(Path.home().name),
+    "ROOT": PathVar(str(Path.root)),
+    "APPDATA": PathVar(str(Path.home().joinpath("AppData/Roaming"))),
+    "LOCALAPPDATA": PathVar(Path.home().joinpath("AppData/Local")),
     "PYDIR": PathVar(str(Path(importFromJSON(jsonPath)["pypath"]))) if importFromJSON(jsonPath)["needpypath"] else StrVar(''),
     "V": StrVar(Version("-"))
 }
 
 ENVIRONMENT_VARS = {f"%{name}%": value for name, value in envVars.items()} | {"~": PathVar(str(Path.home()))}
 
-if GUIC:
-    cli = Console('Custom-Shell', bgColor='#000', font=('Cascadia Mono', 12), boldStyle='brightness', colorTheme=({'green3': "#00A700"}, {'green3': '#00d700'}))
-else:
-    cli = Console(highlight=importFromJSON(jsonPath)["Auto-Highlighting"])
+cli = Console(highlight=importFromJSON(jsonPath)["Auto-Highlighting"])
 
 stdout = ConsoleStdout(cli)
 __stdout__ = stdout
@@ -327,9 +344,25 @@ class CommandManager:
         for idx, item in enumerate(result):
             if isinstance(item, list):
                 for i, arg in enumerate(item):
-                    for name, val in self.vars.items():
-                        item[i] = arg.replace(name, str(val))
-                        arg = item[i]
+                    if REPLACE_V2:
+                        if arg != '':
+                            print(arg)
+                            print(self.vars.items())
+                            for name, val in self.vars.items():
+                                spl = arg.split(name)
+                                print(*[f"{len(itm) - 1} {itm} | {name}: {val} | {spl}" for itm in spl], sep="\n")
+                                l = [(itm[len(itm) - 1] != "\\" and i != len(itm) - 1) for i, itm in enumerate(spl)]
+                                print(l, spl)
+                                if len(l) > 1:
+                                    item[i] = "".join([(itm + str(val)) if addVal else (itm[0:-1] + name) for itm, addVal in zip(spl, l)])
+                                    arg = item[i]
+                                    print("Updated")
+
+                    else:
+                        for name, val in self.vars.items():
+                                item[i] = arg.replace(name, str(val))
+                                arg = item[i]
+
                 result[idx] = item
                 continue
 
@@ -339,13 +372,17 @@ class CommandManager:
 
         return {key: value for key, value in zip(parsedUserInput.keys(), result)}
 
-    def parseStdout(self, text: str) -> Stdout:
+    def parseStdout(self, commandStr: str, text: str) -> Stdout:
         match text:
             case "basic":
                 return basicConsoleStdout()
 
             case "nul" | "null":
                 return nullStdout()
+
+            case "hold":
+                hold(self.run, commandStr)
+                return stdout
 
             case _:
                 if text.startswith("+") and len(text.split(" ")) > 1:
@@ -366,9 +403,17 @@ class CommandManager:
                 userInput = userInput.replace(alias, self.aliases[alias])
 
         if userInput.__contains__("&&"):
-            for command in userInput.split("&&"):
-                self.run(command.strip(" "))
-            return
+            full = False
+            if userInput.split("&&")[-1].split(">", 1)[0].strip(" ") == "":
+                full = True
+
+            if userInput.split("&&")[0].split(" ", 1)[0].lower() != "alias":
+                for command in [com for i, com in enumerate(userInput.split("&&"), 1) if i != len(userInput.split("&&"))]:
+                    if full:
+                        command = f"{command} > {userInput.split("&&")[-1].split(">", 1)[1].strip(" ")}"
+
+                    self.run(command.strip(" "))
+                return
 
         if userInput.__contains__("|"):
             stop: bool = False
@@ -399,7 +444,12 @@ class CommandManager:
 
         if userInput.__contains__(">") and mode != 1:
             userInput, stdoutStr = (text.strip(" ") for text in userInput.split(">", 1))
-            stdout = self.parseStdout(stdoutStr)
+            r = self.parseStdout(userInput, stdoutStr)
+            if stdout == r:
+                return
+
+            else:
+                stdout = r
 
         if flatten(self.commandNames).__contains__(userInput.split(" ", 1)[0].lower()):
             command : Command = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0].lower())]
@@ -681,6 +731,25 @@ def managePlugins(**kwargs) -> None:
 
 #---------------------------------------------------
 
+def SysStats(**kwargs) -> None:
+    stats = SystemStats()
+    kwargs = defaultArgs({"-asciiversion": stats["osv"], "-asciiart": "windows"}, **kwargs)
+
+    displayStats = {"Windows Version": stats['osv'], "Kernel Build": stats['winv'], "Uptime": stats['uptime'], "Custom-Shell Version": Version("-"),
+                    "CPU": f"{stats['cpu']['name']} @ {stats['cpu']['frequency']}", "GPU": stats['gpu'],
+                    "Memory": f"{stats['memory']['used']} / {stats['memory']['total']}", "Disk": f"{stats['disk']['used']} / {stats['disk']['total']}"}
+
+    tst = f"""
+[green bold]Charl[/green bold]@[blue bold]{stats["hostname"]}[/blue bold]
+{"-"*(len(f"Charl@{stats['hostname']}") + 4)}
+ {"\n ".join([f"[blue bold]{stat}[/blue bold]: {val}" for stat, val in displayStats.items()])}"""
+
+    if (kwargs['-asciiversion'] == '8' or kwargs['-asciiversion'] == '10') and kwargs['-asciiart'] == "windows": kwargs["-asciiversion"] = "8,10"
+
+    cli.print(display.HorizontalLayout(f"{kwargs["-asciiart"]}-{kwargs['-asciiversion']}", "left").combineText(tst, "blue bold"))
+
+def printPipeline(text: str) -> str:
+    return text.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
 
 def showStartingPrints(startup : bool = False, **kwargs) -> None:
     if not startup:
@@ -702,7 +771,7 @@ def println(**kwargs) -> None:
 
     kwargs = defaultArgs({"s": " ", "-color": None}, **kwargs)
 
-    print(kwargs["s"].join(kwargs["args"]), style=kwargs["-color"])
+    print(printPipeline(kwargs["s"].join(kwargs["args"])), style=kwargs["-color"])
 
 def printFile(**kwargs) -> None:
     if not needsArgsSetup("cat", 1, "=")(**kwargs):
@@ -868,6 +937,16 @@ def changeDir(**kwargs) -> None:
     os.chdir(kwargs["args"][0])
     curdir = Path.cwd()
 
+def makeAndChangeDir(**kwargs) -> None:
+    global curdir
+    if not needsArgsSetup("mcd", 1, "=")(**kwargs):
+        return None
+
+    path = Path(kwargs['args'][0]).resolve()
+    path.mkdir(parents=True)
+    os.chdir(kwargs['args'][0])
+    curdir = Path.cwd()
+
 def executeFile(**kwargs) -> None:
     if kwargs["args"] == '':
         cli.print("The command execute needs an argument.")
@@ -933,11 +1012,14 @@ def changeConfig(**kwargs) -> None:
     kwargs = booleanArgs(["u", "-update"], **kwargs)
     if kwargs["u"] or kwargs["-update"]:
         for var, val in configUpdates.items():
+            print(f"Updating {var}..." if var != "$func" else f"Running {val}...")
             if var == "$func":
                 exec(val)
+                print(f"Ran {val}")
                 continue
 
             exec(f"{var} = {val}")
+            print(f"Updated {var}")
         return
 
     if not needsArgsSetup("config", 2, "1-2")(**kwargs):
@@ -1016,6 +1098,7 @@ def showHelp(commands : list[Command], prefix: str = '', **kwargs) -> None:
         return None
 
     if prefix == '':
+        r = False
         if kwargs["args"][0] == "all" or kwargs["args"][0] == "*":
             print(f"\t[bold][cyan]all commands[/bold][/cyan]\n\n[bold][green]{"[/green], [green]".join([command.names[0] for command in commands])}[/green]\n\tRun [yellow]help {"\\[command]"}[/yellow] to learn more.[/bold]")
             r = True
@@ -1236,6 +1319,7 @@ def initCommands() -> None:
 
     commands.append(Command(["execute", "start", "exe"], executeFile, {"name": "execute", "description": "Runs an executable file", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["cd"], changeDir, {"name": "changedir", "description": "Changes the current directory.", "has-kwargs": False}))
+    commands.append(Command(["mcd"], makeAndChangeDir, {"name": "makedir-changedir", "description": "Makes the given path as a directory and changes the current directory", "has-kwargs": False}))
 
     commands.append(Command(["python", "python3", "py"], runPyFile, {"name": "python", "description": "Runs a python file.", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["html"], runHTML, {"name": "html", "description": "Runs the given HTML files.", "has-kwargs": False}))
@@ -1260,10 +1344,13 @@ def initCommands() -> None:
 
     commands.append(Command(["project", "projmanager", "manager", "proj", "pm"], ManageProj, {"name": "project-manager", "description": "Runs the Custom-Shell Project Manager CLI.", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["bookmarks", "marks"], bookmark, {"name": "bookmarks", "description": "Manages bookmarks, allowing you to add, go to, and list your bookmarks.", "has-kwargs": True, "kwargs": {"-s": "When listing bookmarks, this is used for the separating characters between bookmarks", "--color": "When listing bookmarks, this is used to style the bookmarks."}}))
+
+    commands.append(Command(["release"], lambda: release(), {"name": "release", "description": "Runs all the commands that were redirected to hold.", "has-kwargs": False}))
+    commands.append(Command(["neofetch", "sysinfo"], SysStats, {"name": "system-info", "description": "Prints the system info of your computer.", "has-kwargs": False}))
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:
-    cli.print(f"[blue]{ENVIRONMENT_VARS["%USER%"]}@{ip.gethostname()}[/blue]:[green3]{(str(curdir).replace(str(Path.home()), "~")) if importFromJSON(jsonPath)["~:Home"] else curdir}{str(b"\x00", 'ascii')}[green3][magenta]$", end=' ', style='bold')
+    cli.print(f"[blue]{ENVIRONMENT_VARS["%USER%"]}@{HOSTNAME}[/blue]:[green3]{(str(curdir).replace(str(Path.home()), "~")) if importFromJSON(jsonPath)["~:Home"] else curdir}{str(b"\x00", 'ascii')}[green3][magenta]$", end=' ', style='bold')
     return cli.input('')
 
 def inputLoop(comM: CommandManager) -> None:

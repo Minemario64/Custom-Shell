@@ -9,9 +9,13 @@ def main():
     inputLoop(comm)
 
 if __name__ == "__main__":
-    sysArgv = [arg for arg in sys.argv[1:] if not arg.__contains__("-")]
+    sysArgv = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
     match len(sysArgv):
         case 0:
+            if sys.argv[1:].__contains__("--version"):
+                comm.run("echo Custom-Shell Version: [red bold]%V%[/red bold]")
+                os._exit(0)
+
             main()
 
         case 1:
@@ -25,11 +29,11 @@ if __name__ == "__main__":
                 runShellFile(path)
 
             elif path.is_dir():
-                comm.run(f"cd {path}")
+                comm.run(f"cd '{path}'")
                 main()
 
             else:
-                comm.run(sysArgv[0])
+                comm.run(f"{sysArgv[0]}{" && > hold" if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep") else ""}")
                 if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep"):
                     main()
 
@@ -38,4 +42,4 @@ if __name__ == "__main__":
                 print(f"Usage: 'Custom-Shell {Version(" ")}.exe' OR 'Custom-Shell {Version(" ")}.exe' <file.csh>")
 
             else:
-                print(f"Usage: python {__file__} OR python {__file__} <file.csh> OR {__file__} <directory> OR {__file__} <command>")
+                print(f"Usage: python {__file__} OR python {__file__} <file.csh> OR {__file__} <directory> OR {__file__} \"<command>\"")
