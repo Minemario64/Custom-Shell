@@ -33,10 +33,6 @@ if ((sys.argv[1:].__contains__("-nd") or sys.argv[1:].__contains__("--nodebug"))
 else:
     DEBUG: bool = True
 
-
-if not sys.argv[1:].__contains__("--version"):
-    HOSTNAME = SystemStats()['hostname']
-
 heldCommands: list[list] = []
 stdout = basicConsoleStdout()
 
@@ -154,6 +150,13 @@ def print(*textArgs, sep: str = " ", end: str = "\n", style: str | None = None, 
     if flush:
         stdout.flush()
 
+try:
+    if sys.argv[1:].__contains__("--version") or (sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep")) or ([arg for arg in sys.argv[1:] if not arg.startswith("-")][0].__contains__("neofetch") or Path([arg for arg in sys.argv[1:] if not arg.startswith("-")][0]).resolve(True)):
+        HOSTNAME = SystemStats()['hostname']
+
+except (FileNotFoundError, IndexError):
+    HOSTNAME = SystemStats()['hostname']
+
 jsonTypesToBytes = lambda data, sep=" ": bytes([int(binStr, 2) for binStr in data.split(sep)])
 
 curdir = Path.home()
@@ -254,21 +257,33 @@ def combineQuotes(args: list[str]) -> list[str]:
                 quote = ""
                 newargs.append(text)
                 text = ""
+
             elif not inquote:
                 inquote = True
                 quote = '"' if arg.__contains__('"') else "'"
                 text += arg.removeprefix(quote)
+                if arg.endswith(quote):
+                    text = text[0:-1]
+
+                inquote = False
+                newargs.append(text)
+
             else:
                 text += arg
+
         else:
             if inquote:
                 text += arg
+
             else:
                 newargs.append(arg)
+
         if inquote:
             text += ' '
+
     if inquote:
         newargs.append(text[0:-1])
+
     return newargs
 
 def getVar(text: str, mode: Literal['$', '%', '%%']) -> tuple[str, str, str]:
@@ -1291,8 +1306,8 @@ commands: list[Command] = []
 
 comm = CommandManager(commands)
 
-def runShellFile(filepath : str) -> None:
-    with open(filepath, "r") as file:
+def runShellFile(filepath : Path) -> None:
+    with filepath.open("r") as file:
         commands = [command for command in file.read().split("\n") if len(command) > 0]
 
     for command in commands:
