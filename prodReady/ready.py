@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     print("Running...")
 
-    ver = [1, 2, 0, ""]
+    ver = [1, 3, 0, ""]
 
     version = (".".join([str(num) for num in ver[0:3]]), ver[3])
     def Version(sep: str) -> str:
