@@ -3,7 +3,7 @@ from pathlib import Path
 
 class TypeRegistry(type):
     types: dict = {}
-    nicknames: dict[str:str] = {}
+    nicknames: dict[str, str] = {}
 
     def __new__(cls, name, bases, dct):
 

@@ -15,12 +15,11 @@ import re
 from projectManager import *
 from stdouts import *
 from caesarCypher import *
-from typing import Literal
+from typing import Literal, Any, Callable
 from varTypes import *
 from asciiart import display, TERMINAL_WIDTH
 from stats import SystemStats
-import socket as ip
-from stats import SystemStats
+from getpass import getpass
 
 
 # GLOBAL SETTINGS
@@ -41,18 +40,20 @@ def runImmediately(func):
 
     return func
 
-def hold(func: callable, *args, **kwargs) -> None:
+def hold(func: Callable, *args, **kwargs) -> None:
     heldCommands.append([func, args, kwargs])
 
 def release() -> None:
     for command in heldCommands:
         command[0](*command[1], **command[2])
 
-def importFromJSON(filename: str | Path) -> dict | None:
+def importFromJSON(filename: str | Path) -> dict:
     filepath = Path(filename) if isinstance(filename, str) else filename
     if filepath.exists():
         with open(filepath, "r") as file:
             return load(file)
+
+    raise FileNotFoundError(f"'{str(filepath)}' does not exist")
 
 def exportToJSON(data: dict, filename: str | Path, indent : bool = True) -> None:
     filepath = Path(filename) if isinstance(filename, str) else filename
@@ -78,7 +79,7 @@ def flatten(l : list) -> list:
                 newList.append(extraItem)
     return newList
 
-def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : int = 0) -> int | None:
+def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : int = 0) -> int | str:
     idx : int = 0 if start else idxStart
     for item in l:
         if (item == targetVal) and (type(item) == type(targetVal)):
@@ -90,20 +91,24 @@ def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : 
             idx = int(itemResult) - 1
         idx += 1
     if start:
-        return None
+        raise IndexError(f"Does not have the value {repr(targetVal)}")
+
     return str(idx) if len(l) > 0 else str(idx + 1)
 
-def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int | None:
+def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int:
     idx : int = 0 if start else idxStart
     for item in l:
         if (item == targetVal) and (type(item) == type(targetVal)):
             return idx
         if isinstance(item, list):
             itemResult = indexIntoLayeredList(item, targetVal, False, idx)
-            if isinstance(itemResult, int):
+            if isinstance(itemResult, int) and itemResult != -1:
                 return itemResult
         idx += 1 if start else 0
-    return None
+    if start:
+        raise IndexError(f"Does not have the value {repr(targetVal)}")
+
+    return -1
 
 def is_hidden(path: Path) -> bool:
     try:
@@ -118,19 +123,19 @@ class ConsoleStdout(basicConsoleStdout):
     def __init__(self, console: Console) -> None:
         self.console = console
 
-    def write(self, text: str):
-        self.console.print(text, end="")
+    def write(self, data: str):
+        self.console.print(data, end="")
 
     def clear(self):
         os.system("powershell clear")
 
     def flush(self):
-        sys.__stdout__.flush()
+        sys.stdout.flush()
 
     def __close__(self):
         pass
 
-def removeRichStyling(text: str) -> None:
+def removeRichStyling(text: str) -> str:
     return "".join([l[0] for l in [text.split("[") for text in text.split("]")]])
 
 OGPrint = print
@@ -154,7 +159,7 @@ try:
     if sys.argv[1:].__contains__("--version") or (sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep")) or ([arg for arg in sys.argv[1:] if not arg.startswith("-")][0].__contains__("neofetch") or Path([arg for arg in sys.argv[1:] if not arg.startswith("-")][0]).resolve(True)):
         HOSTNAME = SystemStats()['hostname']
 
-except (FileNotFoundError, IndexError):
+except (FileNotFoundError, IndexError, OSError):
     HOSTNAME = SystemStats()['hostname']
 
 jsonTypesToBytes = lambda data, sep=" ": bytes([int(binStr, 2) for binStr in data.split(sep)])
@@ -207,7 +212,7 @@ envVars = {
     "USER": StrVar(Path.home().name),
     "ROOT": PathVar(str(Path.root)),
     "APPDATA": PathVar(str(Path.home().joinpath("AppData/Roaming"))),
-    "LOCALAPPDATA": PathVar(Path.home().joinpath("AppData/Local")),
+    "LOCALAPPDATA": PathVar(str(Path.home().joinpath("AppData/Local"))),
     "PYDIR": PathVar(str(Path(importFromJSON(jsonPath)["pypath"]))) if importFromJSON(jsonPath)["needpypath"] else StrVar(''),
     "V": StrVar(Version("-"))
 }
@@ -221,7 +226,7 @@ __stdout__ = stdout
 
 class Command:
 
-    def __init__(self, names : list[str], func : callable, helpInfo : dict, parserPreset: Literal["default", "base-split"] = "default"):
+    def __init__(self, names : list[str], func : Callable[..., None], helpInfo : dict, parserPreset: Literal["default", "base-split"] = "default"):
         self.names : list[str] = names
         self.func = func
         self.helpInfo = helpInfo
@@ -328,11 +333,11 @@ class CommandManager:
         self.commands : list[Command] = commands
         self.commandNames : list[list[str]] = [command.names for command in commands]
         self.aliases = {alias: command for alias, command in importFromJSON(jsonPath)['aliases'].items()}
-        self.vars: dict[str: VarType] = ENVIRONMENT_VARS | {f"%{dct["name"]}": TypeRegistry.types[TypeRegistry.nicknames[dct['type']]](TypeRegistry.types[TypeRegistry.nicknames[dct['type']]].__jload__(jsonTypesToBytes(dct["data"]))) for dct in importFromJSON(jsonPath)['vars']}
+        self.vars: dict[str, VarType] = ENVIRONMENT_VARS | {f"%{dct["name"]}": TypeRegistry.types[TypeRegistry.nicknames[dct['type']]](TypeRegistry.types[TypeRegistry.nicknames[dct['type']]].__jload__(jsonTypesToBytes(dct["data"]))) for dct in importFromJSON(jsonPath)['vars']}
         self.recording: bool = False
 
-    def parseCommand(self, userInput : str) -> dict[str:str]:
-        output: dict[str:str] = {"args": None}
+    def parseCommand(self, userInput : str) -> dict[str, str | None | list[str] | bool | VarType]:
+        output: dict[str, str | None | list[str] | bool | VarType] = {"args": None}
         if userInput.__contains__(" "):
             args: list[str] = combineQuotes(userInput.split(" ")[1:])
             kwarg = None
@@ -348,13 +353,13 @@ class CommandManager:
                     else:
                         if output["args"] == None:
                             output["args"] = []
-                        output["args"].append(arg)
+                        output["args"].append(arg) # pyright: ignore[reportAttributeAccessIssue]
             if kwarg != None:
                 output[kwarg] = None
 
         return output
 
-    def changeVarArgs(self, parsedUserInput: dict[str, str | list[str] | None]) -> dict:
+    def changeVarArgs(self, parsedUserInput: dict[str, str | None | list[str] | bool | VarType]) -> dict[str, str | None | list[str] | bool | VarType]:
         result = list(parsedUserInput.values())
         for idx, item in enumerate(result):
             if isinstance(item, list):
@@ -467,7 +472,7 @@ class CommandManager:
                 stdout = r
 
         if flatten(self.commandNames).__contains__(userInput.split(" ", 1)[0].lower()):
-            command : Command = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0].lower())]
+            command : Command | str = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0].lower())]
 
         else:
             if not userInput.split(" ", 1)[0].startswith("alias"):
@@ -541,6 +546,9 @@ class CommandManager:
                 else:
                     pui = {"args": parse[1]}
 
+            case _:
+                raise ValueError(f"Command '{command.names[0]}' has an invalid parser preset.")
+
         if numOfNonDefaultArgs(command.func) == 0:
             command.run()
         else:
@@ -588,19 +596,19 @@ class Plugin(metaclass=PluginRegistry):
 
 #------------------------------------------------------
 
-def lambdaWithKWArgsSetup(lambdaFunc: callable):
+def lambdaWithKWArgsSetup(lambdaFunc: Callable):
     def runLambdaWithKWArgs(**kwargs):
         lambdaFunc(kwargs)
 
     return runLambdaWithKWArgs
 
-def lambdaWithArgsSetup(lambdaFunc: callable):
+def lambdaWithArgsSetup(lambdaFunc: Callable):
     def runLambdaWithArgs(**kwargs):
         lambdaFunc(kwargs['args'][0])
 
     return runLambdaWithArgs
 
-def needsArgsSetup(command: str, args: int, comparison: str = ">=") -> callable:
+def needsArgsSetup(command: str, args: int, comparison: str = ">=") -> Callable[..., bool] | Callable[..., Callable[..., bool]]:
     def checkAtLeastArgs(**kwargs) -> bool:
         if kwargs["args"] == None or len(kwargs["args"]) < args:
             cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] needs at least {args} arguments.")
@@ -625,7 +633,7 @@ def needsArgsSetup(command: str, args: int, comparison: str = ">=") -> callable:
             return False
         return True
 
-    def checkRangeOfArgs(min: int, max: int) -> callable:
+    def checkRangeOfArgs(min: int, max: int) -> Callable[..., bool]:
         def checkArgs(**kwargs) -> bool:
             if (kwargs['args'] == None and min > 0) or len(kwargs["args"]) < min or len(kwargs["args"]) > max:
                 cli.print(f"The command [bold][cyan]{command}[/bold][/cyan] needs between {min} arguments and {max} arguments.")
@@ -649,7 +657,9 @@ def needsArgsSetup(command: str, args: int, comparison: str = ">=") -> callable:
     if re.compile(r"[0123456789]*-[0123456789]*").match(comparison):
         return checkRangeOfArgs(int(comparison.split("-")[0]), int(comparison.split("-")[1]))
 
-def needsKWArgsSetup(command: str, neededkwargs: list[str]) -> callable:
+    raise ValueError(f"Invalid Comparison. Can only accept '>=', '<=', '=', or a range ('[int]-[int]')")
+
+def needsKWArgsSetup(command: str, neededkwargs: list[str]) -> Callable[..., bool]:
     def checkKWArgs(**kwargs) -> bool:
         for arg in neededkwargs:
             try:
@@ -747,10 +757,10 @@ def managePlugins(**kwargs) -> None:
 #---------------------------------------------------
 
 def SysStats(**kwargs) -> None:
-    stats = SystemStats()
+    stats: dict[str, Any] = SystemStats()
     kwargs = defaultArgs({"-asciiversion": stats["osv"], "-asciiart": "windows"}, **kwargs)
 
-    displayStats = {"Windows Version": stats['osv'], "Kernel Build": stats['winv'], "Uptime": stats['uptime'], "Custom-Shell Version": Version("-"),
+    displayStats: dict[str, Any] = {"Windows Version": stats['osv'], "Kernel Build": stats['winv'], "Uptime": stats['uptime'], "Custom-Shell Version": Version("-"),
                     "CPU": f"{stats['cpu']['name']} @ {stats['cpu']['frequency']}", "GPU": stats['gpu'],
                     "Memory": f"{stats['memory']['used']} / {stats['memory']['total']}", "Disk": f"{stats['disk']['used']} / {stats['disk']['total']}"}
 
@@ -820,7 +830,7 @@ def runWConfig(**kwargs) -> None:
     config = importFromJSON(jsonPath)["run"]
     for runConfig in config:
         if runConfig["names"].__contains__(kwargs["args"][0]):
-            execRunCom(f'"{Path(runConfig["path"])}"', runConfig["language"])
+            execRunCom(Path(runConfig["path"]), runConfig["language"])
 
 def webcutWConfig(**kwargs) -> None:
     if not needsArgsSetup("webcut", 1, "="):
@@ -870,6 +880,9 @@ def listdir(**kwargs) -> None:
                 case 1:
                     return True
 
+                case _:
+                    raise ValueError(f"mode cannot be {mode}, it can either be 1 or 0.")
+
         except PermissionError:
             return False
 
@@ -884,8 +897,11 @@ def listdir(**kwargs) -> None:
 
     match kwargs["t"]:
         case "all":
-            print(f"{kwargs["s"].join(folders)}", end=kwargs["s"], style=kwargs["-folder-color"])
-            print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
+            if len(folders) > 0:
+                print(f"{kwargs["s"].join(folders)}", end=kwargs["s"], style=kwargs["-folder-color"])
+
+            if len(files) > 0:
+                print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
 
         case "files" | "file" | "f":
             print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
@@ -934,7 +950,7 @@ def wait(**kwargs) -> None:
             time.sleep(float(kwargs["args"][0]) * 60)
 
 def openNotepad(**kwargs) -> None:
-    if not needsArgsSetup("vscode", 1, "<=")(**kwargs):
+    if not needsArgsSetup("notepad", 1, "<=")(**kwargs):
         return None
 
     os.system(f'notepad{f' {kwargs["args"][0]}' if kwargs["args"] != None else ""}')
@@ -1024,7 +1040,7 @@ def removeContent(**kwargs) -> None:
             os.system(f"powershell Remove-Item -Path {file} -Force")
 
 def changeConfig(**kwargs) -> None:
-    kwargs = booleanArgs(["u", "-update"], **kwargs)
+    kwargs = booleanArgs(["u", "-update", "f", "-file"], **kwargs)
     if kwargs["u"] or kwargs["-update"]:
         for var, val in configUpdates.items():
             print(f"Updating {var}..." if var != "$func" else f"Running {val}...")
@@ -1259,6 +1275,97 @@ def bookmark(**kwargs) -> None:
         case _:
             cli.print("Invalid Mode. Modes can be either 'add', 'goto', or 'list', 'dir'.")
 
+def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
+
+    def dupWidth(text: str, width: int) -> str:
+        repeating, part = divmod(width, len(text))
+        return (text*repeating) + text[0:part]
+
+    def encypher(data: bytes, amount: int) -> bytes:
+        if amount < -255 or amount > 255 or (not isinstance(amount, int)):
+            raise ValueError("Cannot encypher - amount must be an integer from -255 to 255")
+
+        return bytes([(byte + amount) % 256 for byte in data])
+
+    def encrypt(data: bytes, key: str) -> bytes:
+        p1: bytes = bytes([x ^ y for x, y in zip(data, bytes(dupWidth(key, len(data)), "utf-8"))])
+        result: bytes = bytes([x ^ y for x, y in zip([len(data) % 256 for _ in range(len(data))], p1)])
+        return result
+
+    def decrypt(content: bytes, key: str) -> bytes:
+        return bytes([(x ^ y) ^ z for x, y, z in zip(content, [len(content) % 256 for _ in range(len(content))], bytes(dupWidth(key, len(content)), 'utf-8'))])
+
+    kwargs: dict = booleanArgs(["e", "d"], **kwargs)
+
+    if not needsArgsSetup("crypt", 1):
+        return
+
+    path: Path = Path(kwargs['args'][0])
+
+    if not path.is_file():
+        cli.print(f"'{path}' is a directory or it doesn't exist")
+
+    if kwargs["e"]:
+
+        key: str = getpass("Encryption Key: ")
+
+        with path.open("rb") as unencryptedFile:
+            unencryptedText = unencryptedFile.read()
+
+        encryptedText = encrypt(unencryptedText, key)
+
+        try:
+            filepath: Path = Path(kwargs['f'])
+            filepath.touch()
+            with filepath.open("wb") as encryptedFile:
+                encryptedFile.write(encryptedText)
+
+        except KeyError:
+            while True:
+                inp = input("This will override the original file. Do you want to continue (y/n): ")
+                if inp.lower() in ['y', "yes"]:
+                    break
+
+                if inp.lower() in ["n", "no"]:
+                    print("Cancelling...")
+                    return
+
+                print("You need to ether y, n, yes, or no.")
+                time.sleep(1)
+
+            with path.open("wb") as encryptedFile:
+                encryptedFile.write(encryptedText)
+
+    if kwargs['d']:
+        key: str = getpass("Encryption Key: ")
+
+        with path.open("rb") as encryptedFile:
+            content = encryptedFile.read()
+
+        unencryptedContent = decrypt(content, key)
+
+        try:
+            filepath: Path = Path(kwargs['f'])
+            filepath.touch()
+            with filepath.open("wb") as encryptedFile:
+                encryptedFile.write(unencryptedContent)
+
+        except KeyError:
+            while True:
+                inp = input("This will override the original file. Do you want to continue (y/n): ")
+                if inp.lower() in ['y', "yes"]:
+                    break
+
+                if inp.lower() in ["n", "no"]:
+                    print("Cancelling...")
+                    return
+
+                print("You need to ether y, n, yes, or no.")
+                time.sleep(1)
+
+            with path.open("wb") as encryptedFile:
+                encryptedFile.write(unencryptedContent)
+
 def initRecording(comM: CommandManager) -> None:
     def record(**kwargs):
         global recordedCommands
@@ -1362,6 +1469,7 @@ def initCommands() -> None:
 
     commands.append(Command(["release"], lambda: release(), {"name": "release", "description": "Runs all the commands that were redirected to hold.", "has-kwargs": False}))
     commands.append(Command(["neofetch", "sysinfo"], SysStats, {"name": "system-info", "description": "Prints the system info of your computer.", "has-kwargs": False}))
+    commands.append(Command(["crypt", "gpg", "enc"], crypt, {"name": "Crypt", "description": "Encrypts and decrypts files, with gpg like syntax.", "has-kwargs": True, "kwargs": {"-e": "Encryption mode (encrypts the file)", "-d": "Decryption mode", "-f": "Makes the result be saved in a different file"}}))
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:

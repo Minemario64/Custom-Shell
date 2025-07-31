@@ -40,3 +40,5 @@ class HorizontalLayout(Layout):
         elif self.side == "right":
             artLns = [fixedWidth(ln[::-1], TERMINAL_WIDTH // 2)[::-1] for ln in self.art.split("\n")]
             return "\n".join([f"{ln}{artLn}" for artLn, ln in zip(artLns, fixedSize([fixedWidth(ln, TERMINAL_WIDTH // 2) for ln in text.split("\n")], len(artLns), ' '*(TERMINAL_WIDTH // 2)))])
+
+        raise ValueError(f"{self}.side must either be 'left' or 'right'.")

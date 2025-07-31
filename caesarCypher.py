@@ -1,12 +1,13 @@
+from typing import Callable
 
-charLists = {
+charLists: dict[str, str] = {
     "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
     "alphanumeric": "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
     "qwerty": "QWERTYUIOPASDFGHJKLZXCVBNM",
     "numeric": "1234567890"
 }
 
-def customCypherPreset(charListName : str | list[str], turns : int, *extra, keepCase : bool = True, addInfo : bool = False, getInfo : bool = True, customCharList : bool = False) -> callable:
+def customCypherPreset(charListName, turns : int, *extra, keepCase : bool = True, addInfo : bool = False, getInfo : bool = True, customCharList : list[str] | None = None) -> tuple[Callable, Callable]:
     def customCypher(text : str):
         if getInfo:
             return [cypher(text, charListName, turns, keepCase=keepCase, addInfo=addInfo, customCharList=customCharList), {"characterListName": charListName, "turns": turns} if customCharList else {"characterList": charListName, "turns": turns}]
@@ -21,11 +22,11 @@ def customCypherPreset(charListName : str | list[str], turns : int, *extra, keep
 
     return customCypher, customDeCypher
 
-def cypher(text : str, charListID : str | list[str] = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : bool = False) -> str:
+def cypher(text : str, charListID : str = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : list[str] | None = None) -> str:
     if not customCharList:
-        charList = [char for char in charLists[charListID]]
+        charList: list[str] = list(charLists[charListID])
     else:
-        charList = charListID
+        charList: list[str] = customCharList
     newText = ""
     for char in text:
         if char.islower() and keepCase:
@@ -43,11 +44,11 @@ def cypher(text : str, charListID : str | list[str] = "alphabet", turns : int = 
         newText += f"\nturns: {turns}   Character List: {charListID}\n{" " * len(f"turns: {turns}  ")}{"-" * len(f" Character List: {charListID} ")}\n{" " * len(f"turns: {turns}  ")}{charList}"
     return newText
 
-def deCypher(text : str, charListID : str | list[str] = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : bool = False) -> str:
+def deCypher(text : str, charListID : str = "alphabet", turns : int = 1,*, keepCase : bool = True, addInfo : bool = False, customCharList : list[str] | None = None) -> str:
     if not customCharList:
-        charList = [char for char in charLists[charListID]]
+        charList = list(charLists[charListID])
     else:
-        charList = charListID
+        charList = customCharList
     newText = ""
     for char in text:
         if char.islower() and keepCase:

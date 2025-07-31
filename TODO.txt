@@ -9,7 +9,6 @@ COMMANDS:
 - sshf : SSH into a host with IP fallback, and go into Custom-Shell if possible
 - todo : Todo manager
 - timer : Run a command after a certain amount of time (and notify)
-- encr : Encrypt and Decrypt files
 - pathviz : Render a dir tree diagram in ascii or HTML
 - archivz : Create compressed archives with configurable presets
 - trash : Move files into the system trash

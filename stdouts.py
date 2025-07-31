@@ -30,13 +30,13 @@ class basicConsoleStdout(Stdout):
         pass
 
     def write(self, data: str):
-        sys.__stdout__.write(data)
+        sys.stdout.write(data)
 
     def clear(self):
         os.system("powershell clear")
 
     def flush(self):
-        sys.__stdout__.flush()
+        sys.stdout.flush()
 
     def __close__(self):
         pass

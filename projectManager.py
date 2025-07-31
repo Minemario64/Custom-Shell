@@ -11,11 +11,13 @@ import win32file
 import win32con
 import os
 
-def importFromJSON(filename: str | Path) -> dict | None:
+def importFromJSON(filename: str | Path) -> dict:
     filepath = Path(filename) if isinstance(filename, str) else filename
     if filepath.exists():
         with open(filepath, "r") as file:
             return load(file)
+
+    raise FileNotFoundError(f"'{str(filepath)}' does not exist")
 
 def exportToJSON(data: dict | list, filename: str | Path, indent : bool = True) -> None:
     filepath = Path(filename) if isinstance(filename, str) else filename
@@ -37,7 +39,7 @@ def flatten(l : list) -> list:
                 newList.append(extraItem)
     return newList
 
-def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int | None:
+def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int:
     idx : int = 0 if start else idxStart
     for item in l:
         if (item == targetVal) and (type(item) == type(targetVal)):
@@ -47,7 +49,7 @@ def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : in
             if isinstance(itemResult, int):
                 return itemResult
         idx += 1 if start else 0
-    return None
+    raise IndexError(f"Does not have the value {repr(targetVal)}")
 
 def hidePath(path: Path) -> None:
    if path.exists():
@@ -107,6 +109,7 @@ class Language:
 
         templatePath.mkdir()
         os.system(f'powershell Copy-Item -Path "{directory}" -Destination "{templatePath}" -Recurse')
+        return True
 
     def makeProject(self, projectPath: Path, templateName: str = 'default') -> None:
         """Makes a project from a given template
@@ -161,7 +164,7 @@ if not globalTemplatesPath.exists():
 
 defaultConfig = {"languages": {}, "command-languages": {}}
 
-def updateConfig() -> None:
+def updatePMConfig() -> None:
     config = importFromJSON(configPath)
     result = {}
     for setting, default in defaultConfig.items():
@@ -179,7 +182,7 @@ if not configPath.exists():
     exportToJSON(defaultConfig, configPath)
 
 else:
-    updateConfig()
+    updatePMConfig()
 
 LANG_LOOKUP = LANG_LOOKUP | importFromJSON(configPath)["command-languages"]
 

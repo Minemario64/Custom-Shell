@@ -8,17 +8,17 @@ import datetime
 import time
 from math import floor
 
-def numAsBytesToStr(num: int) -> str:
+def numAsBytesToStr(num: int | float) -> str:
     power: int = 1024
     unitIdx: int = 0
     units: list[str] = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
     while num >= power and unitIdx < len(units) - 1:
-        num /= power
+        num //= power
         unitIdx += 1
 
     return f"{num:.2f} {units[unitIdx]}"
 
-def numAsFrequencyToStr(num: int) -> str:
+def numAsFrequencyToStr(num: int | float) -> str:
     power: int = 1000
     unitIdx: int = 0
     units: list[str] = ['Hz', 'KHz', 'MHz', 'GHz']
@@ -32,7 +32,7 @@ def formatSecs(seconds: int) -> str:
     return f"{floor((seconds / 60) / 60)} Hours, {floor((seconds / 60) % 60)} Mins, {seconds % 60} Seconds"
 
 @cache
-def _SysStats() -> dict[str, str | int]:
+def _SysStats() -> dict[str, str | int | dict[str, str | int]]:
     disk = psutil.disk_usage('/')
     gpus: list[GPU] = getGPUs()
     mem = psutil.virtual_memory()
@@ -41,18 +41,18 @@ def _SysStats() -> dict[str, str | int]:
                         "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpus[0].name}
     return SYSTEM_STATISTICS
 
-def SystemStats() -> dict[str, str | int]:
+def SystemStats() -> dict[str, str | int | dict[str, str | int]]:
 
     disk = psutil.disk_usage('/')
     mem = psutil.virtual_memory()
 
-    sysstats: dict[str, str | int] = _SysStats()
+    sysstats: dict[str, str | int | dict[str, str | int]] = _SysStats()
 
-    sysstats["disk"]["used"] = numAsBytesToStr(disk.used)
-    sysstats["disk"]["free"] = numAsBytesToStr(disk.free)
-    sysstats["memory"]["total"] = numAsBytesToStr(mem.total)
-    sysstats["memory"]["used"] = numAsBytesToStr(mem.used)
-    sysstats["memory"]["free"] = numAsBytesToStr(mem.free)
+    sysstats["disk"]["used"] = numAsBytesToStr(disk.used) # pyright: ignore[reportIndexIssue]
+    sysstats["disk"]["free"] = numAsBytesToStr(disk.free) # pyright: ignore[reportIndexIssue]
+    sysstats["memory"]["total"] = numAsBytesToStr(mem.total) # pyright: ignore[reportIndexIssue]
+    sysstats["memory"]["used"] = numAsBytesToStr(mem.used) # pyright: ignore[reportIndexIssue]
+    sysstats["memory"]["free"] = numAsBytesToStr(mem.free) # pyright: ignore[reportIndexIssue]
     sysstats['uptime'] = formatSecs(int(time.time() - psutil.boot_time()))
 
 
