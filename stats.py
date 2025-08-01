@@ -1,7 +1,7 @@
 import platform
 import cpuinfo
 import psutil
-from GPUtil import GPU, getGPUs
+import wmi
 from functools import cache
 import socket as ip
 import datetime
@@ -34,11 +34,11 @@ def formatSecs(seconds: int) -> str:
 @cache
 def _SysStats() -> dict[str, str | int | dict[str, str | int]]:
     disk = psutil.disk_usage('/')
-    gpus: list[GPU] = getGPUs()
+    gpu = wmi.WMI().Win32_VideoController()[0]
     mem = psutil.virtual_memory()
     SYSTEM_STATISTICS = {"osv": platform.release(), "winv": platform.version(), "hostname": ip.gethostname(), "cpu": {"name": cpuinfo.get_cpu_info()['brand_raw'], "cores": psutil.cpu_count(), "frequency": numAsFrequencyToStr((psutil.cpu_freq().current * 1_000) * 1_000)},
                         "memory": {"total": numAsBytesToStr(mem.total), "used": numAsBytesToStr(mem.used), "free": numAsBytesToStr(mem.free)},
-                        "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpus[0].name}
+                        "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpu.Name}
     return SYSTEM_STATISTICS
 
 def SystemStats() -> dict[str, str | int | dict[str, str | int]]:

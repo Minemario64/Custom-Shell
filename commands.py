@@ -1,4 +1,4 @@
-ver = [1, 2, 0, ""]
+ver = [1, 3, 1, ""]
 
 version = (".".join([str(num) for num in ver[0:3]]), ver[3])
 def Version(sep: str) -> str:

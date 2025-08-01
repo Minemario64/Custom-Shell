@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     print("Running...")
 
-    ver = [1, 3, 0, ""]
+    ver = [1, 3, 1, ""]
 
     version = (".".join([str(num) for num in ver[0:3]]), ver[3])
     def Version(sep: str) -> str:
@@ -685,7 +685,7 @@ if __name__ == "__main__":
     import platform
     import cpuinfo
     import psutil
-    from GPUtil import GPU, getGPUs
+    import wmi
     from functools import cache
     import socket as ip
     import time
@@ -717,12 +717,12 @@ if __name__ == "__main__":
     @cache
     def _SysStats() -> dict[str, str | int | dict[str, str | int]]:
         disk = psutil.disk_usage('/')
-        gpus: list[GPU] = getGPUs()
+        gpu = wmi.WMI().Win32_VideoController()[0]
         mem = psutil.virtual_memory()
 
         SYSTEM_STATISTICS: dict = {"osv": platform.release(), "winv": platform.version(), "hostname": ip.gethostname(), "cpu": {"name": cpuinfo.get_cpu_info()['brand_raw'], "cores": psutil.cpu_count(), "frequency": numAsFrequencyToStr((psutil.cpu_freq().current * 1_000) * 1_000)},
                             "memory": {"total": numAsBytesToStr(mem.total), "used": numAsBytesToStr(mem.used), "free": numAsBytesToStr(mem.free)},
-                            "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpus[0].name}
+                            "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpu.Name}
 
         return SYSTEM_STATISTICS
 
