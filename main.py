@@ -1,3 +1,5 @@
+print("Running...")
+
 from commands import *
 import sys
 

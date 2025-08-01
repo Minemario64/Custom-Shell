@@ -26,7 +26,7 @@ from getpass import getpass
 DEV: bool = True
 REPLACE_V2: bool = False
 
-if ((sys.argv[1:].__contains__("-nd") or sys.argv[1:].__contains__("--nodebug")) or __name__ == "__main__") or not DEV:
+if ((sys.argv[1:].__contains__("-nd") or sys.argv[1:].__contains__("--nodebug")) or (__name__ == "__main__" and not DEV)) or not DEV:
     DEBUG: bool = False
 
 else:
@@ -1163,6 +1163,9 @@ def cmdCommand(**kwargs) -> None:
     kwargs["args"] = f"cmd /c {kwargs["args"]}"
     sysCommand(**kwargs)
 
+def execCommand(**kwargs) -> None:
+    comm.run(kwargs['args'].strip())
+
 def ManageProj(**kwargs) -> None:
 
     def run(**kwargs) -> None:
@@ -1470,6 +1473,7 @@ def initCommands() -> None:
     commands.append(Command(["release"], lambda: release(), {"name": "release", "description": "Runs all the commands that were redirected to hold.", "has-kwargs": False}))
     commands.append(Command(["neofetch", "sysinfo"], SysStats, {"name": "system-info", "description": "Prints the system info of your computer.", "has-kwargs": False}))
     commands.append(Command(["crypt", "gpg", "enc"], crypt, {"name": "Crypt", "description": "Encrypts and decrypts files, with gpg like syntax.", "has-kwargs": True, "kwargs": {"-e": "Encryption mode (encrypts the file)", "-d": "Decryption mode", "-f": "Makes the result be saved in a different file"}}))
+    commands.append(Command(["exec", "execute", "com", "command"], execCommand, {"name": "execute", "description": "Executes the command that you give it", "has-kwargs": False}, 'base-split'))
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:
