@@ -11,7 +11,12 @@ def main():
     inputLoop(comm)
 
 if __name__ == "__main__":
-    sysArgv = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    sysArgv: list[str] = []
+    for i, arg in enumerate(sys.argv[1:]):
+        if not arg.startswith("-") and not (arg in KWARGS):
+            if not sys.argv[1:][i-1] in NON_BOOL_KWARGS:
+                sysArgv.append(arg)
+
     match len(sysArgv):
         case 0:
             if sys.argv[1:].__contains__("--version"):
@@ -31,6 +36,7 @@ if __name__ == "__main__":
                 runShellFile(path)
 
             elif path.is_dir():
+                if 4 in DEBUG_MODE: print(f"cd '{path}'")
                 comm.run(f"cd '{path}'")
                 main()
 
@@ -38,6 +44,17 @@ if __name__ == "__main__":
                 comm.run(f"{sysArgv[0]}{" && > hold" if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep") else ""}")
                 if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep"):
                     main()
+
+        case 2:
+            os.chdir(cwd)
+            path = Path(sysArgv[0]).resolve()
+            os.chdir(curdir)
+
+            if 4 in DEBUG_MODE: print(f"cd '{path}'")
+            comm.run(f"cd '{path}'")
+            comm.run(f"{sysArgv[1]}{" && > hold" if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep") else ""}")
+            if sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep"):
+                main()
 
         case _:
             if not DEBUG:

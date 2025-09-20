@@ -23,9 +23,9 @@ class Diff:
             case _:
                 raise ValueError("Invalid mode.")
 
-        cli.print(self.str(strMode))
+        cli.print(self.__str__(strMode))
 
-    def str(self, mode: int = 0) -> str:
+    def __str__(self, mode: int = 0) -> str:
         result = ""
         match mode:
             case 0:

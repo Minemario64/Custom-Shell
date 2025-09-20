@@ -3,5 +3,6 @@
         "cshplugin",
         "mkproj",
         "projmanager"
-    ]
+    ],
+    "bookmarks.saveBookmarksInProject": true
 }

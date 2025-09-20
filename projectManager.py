@@ -46,10 +46,13 @@ def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : in
             return idx
         if isinstance(item, list):
             itemResult = indexIntoLayeredList(item, targetVal, False, idx)
-            if isinstance(itemResult, int):
+            if isinstance(itemResult, int) and itemResult != -1:
                 return itemResult
         idx += 1 if start else 0
-    raise IndexError(f"Does not have the value {repr(targetVal)}")
+    if start:
+        raise IndexError(f"Does not have the value {repr(targetVal)}")
+
+    return -1
 
 def hidePath(path: Path) -> None:
    if path.exists():
@@ -108,7 +111,7 @@ class Language:
                 return False
 
         templatePath.mkdir()
-        os.system(f'powershell Copy-Item -Path "{directory}" -Destination "{templatePath}" -Recurse')
+        os.system(f'powershell Copy-Item -Path "{directory}\\*.*" -Destination "{templatePath}" -Recurse')
         return True
 
     def makeProject(self, projectPath: Path, templateName: str = 'default') -> None:

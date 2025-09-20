@@ -1,0 +1,74 @@
+{
+	"files": [
+		{
+			"path": "commands.py",
+			"bookmarks": [
+				{
+					"line": 0,
+					"column": 0,
+					"label": "Version And Constants"
+				},
+				{
+					"line": 190,
+					"column": 0,
+					"label": "Mutable Globals"
+				},
+				{
+					"line": 358,
+					"column": 0,
+					"label": "Command Manager"
+				},
+				{
+					"line": 586,
+					"column": 0,
+					"label": "Plugin Classes"
+				},
+				{
+					"line": 621,
+					"column": 0,
+					"label": "Command Help Funcs"
+				},
+				{
+					"line": 735,
+					"column": 0,
+					"label": "Plugin Funcs"
+				},
+				{
+					"line": 810,
+					"column": 0,
+					"label": "Command Implementations"
+				},
+				{
+					"line": 1209,
+					"column": 0,
+					"label": "Project Manager Func"
+				},
+				{
+					"line": 1505,
+					"column": 0,
+					"label": "Commands"
+				}
+			]
+		},
+		{
+			"path": "projectManager.py",
+			"bookmarks": [
+				{
+					"line": 0,
+					"column": 0,
+					"label": "Version And Imports"
+				},
+				{
+					"line": 61,
+					"column": 0,
+					"label": "Globals"
+				},
+				{
+					"line": 159,
+					"column": 0,
+					"label": "Setup"
+				}
+			]
+		}
+	]
+}

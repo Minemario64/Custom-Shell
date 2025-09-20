@@ -4,7 +4,6 @@ import psutil
 import wmi
 from functools import cache
 import socket as ip
-import datetime
 import time
 from math import floor
 

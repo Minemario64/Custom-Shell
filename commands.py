@@ -25,6 +25,25 @@ from getpass import getpass
 # GLOBAL SETTINGS
 DEV: bool = True
 REPLACE_V2: bool = False
+DEBUG_MODE: list[int] = []
+DEBUG_MODES: list[int] = [
+    1, 2, 3, 4, 5
+]
+KWARGS: list[str] = [
+    "--mode"
+]
+NON_BOOL_KWARGS: list[str] = [
+    "--mode"
+]
+
+if sys.argv[1:].__contains__("--mode") and ((not "-nd" in sys.argv[1:]) or (not "--nodebug" in sys.argv[1:])) and DEV:
+    if sys.argv[1:][sys.argv[1:].index("--mode") + 1] != "all":
+        DEBUG_MODE = [int(num) for num in sys.argv[1:][sys.argv[1:].index("--mode") + 1].split("+")]
+
+    else:
+        DEBUG_MODE = DEBUG_MODES
+
+    print(f"Debug Modes: {", ".join(str(mode) for mode in DEBUG_MODE)}")
 
 if ((sys.argv[1:].__contains__("-nd") or sys.argv[1:].__contains__("--nodebug")) or (__name__ == "__main__" and not DEV)) or not DEV:
     DEBUG: bool = False
@@ -110,6 +129,13 @@ def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : in
 
     return -1
 
+def VarsContains(key: str, jsonDict: dict[str, Any]) -> tuple[bool, int | None]:
+    for i, d in enumerate(jsonDict["vars"]):
+        if d["name"] == key:
+            return True, i
+
+    return False, None
+
 def is_hidden(path: Path) -> bool:
     try:
         return bool(os.stat(path).st_file_attributes & 0x2)
@@ -171,8 +197,8 @@ jsonPath = Path.home().joinpath(".csconfig")
 
 os.chdir(curdir)
 
-configExport = {"~:Home": False, "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "run": [], "webcut": [], "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
-configTypes = {"~:Home": "bool", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "run": "managed", "webcut": "managed", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
+configExport = {"~:Home": False, "confirm-override": True, "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "run": [], "webcut": [], "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
+configTypes = {"~:Home": "bool", "confirm:override": "bool", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "run": "managed", "webcut": "managed", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
 configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String"}
 
 def updateConfig() -> None:
@@ -254,6 +280,7 @@ def combineQuotes(args: list[str]) -> list[str]:
     inquote = False
     quote = ""
     text = ""
+    if 2 in DEBUG_MODE: print(",".join(args))
     for arg in args:
         if arg.__contains__('"') or arg.__contains__("'"):
             if arg.__contains__(quote) and inquote:
@@ -268,10 +295,12 @@ def combineQuotes(args: list[str]) -> list[str]:
                 quote = '"' if arg.__contains__('"') else "'"
                 text += arg.removeprefix(quote)
                 if arg.endswith(quote):
+                    if 2 in DEBUG_MODE: print(f"Just 1 arg with {quote}, {arg}")
                     text = text[0:-1]
-
-                inquote = False
-                newargs.append(text)
+                    inquote = False
+                    newargs.append(text)
+                    text = ""
+                    quote = ""
 
             else:
                 text += arg
@@ -340,9 +369,10 @@ class CommandManager:
         output: dict[str, str | None | list[str] | bool | VarType] = {"args": None}
         if userInput.__contains__(" "):
             args: list[str] = combineQuotes(userInput.split(" ")[1:])
+            if 1 in DEBUG_MODE: print(args)
             kwarg = None
             for arg in args:
-                if arg.startswith("-"):
+                if arg.startswith("-") and arg.lstrip("-") != "":
                     if kwarg != None:
                         output[kwarg] = None
                     kwarg = arg[1:]
@@ -421,6 +451,7 @@ class CommandManager:
         for alias in self.aliases.keys():
             if userInput.split(" ", 1)[0] == alias:
                 userInput = userInput.replace(alias, self.aliases[alias])
+                if 5 in DEBUG_MODE: cli.print(userInput)
 
         if userInput.__contains__("&&"):
             full = False
@@ -428,7 +459,8 @@ class CommandManager:
                 full = True
 
             if userInput.split("&&")[0].split(" ", 1)[0].lower() != "alias":
-                for command in [com for i, com in enumerate(userInput.split("&&"), 1) if i != len(userInput.split("&&"))]:
+                if 3 in DEBUG_MODE: print([com for i, com in enumerate(userInput.split("&&"), 1) if not (i == len(userInput.split("&&")) and full)], full)
+                for command in [com for i, com in enumerate(userInput.split("&&"), 1) if not (i == len(userInput.split("&&")) and full)]:
                     if full:
                         command = f"{command} > {userInput.split("&&")[-1].split(">", 1)[1].strip(" ")}"
 
@@ -475,60 +507,49 @@ class CommandManager:
             command : Command | str = self.commands[indexIntoLayeredList(self.commandNames, userInput.split(" ", 1)[0].lower())]
 
         else:
-            if not userInput.split(" ", 1)[0].startswith("alias"):
-                sessionVarPattern = re.compile(r"^[a-z]* \$[a-zA-Z0123456789-_+]* *= *.*$")
-                globalVarPattern = re.compile(r"^[a-z]* %[a-zA-Z0123456789-_+]* *= *.*$")
-                printVarPattern = re.compile(r"^[$%][a-zA-Z0123456789-_+]*%?")
-                if sessionVarPattern.match(userInput):
-                    type, name, value = getVar(userInput, '$')
-                    try:
-                        value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
-                    except KeyError:
-                        pass
-                    if not isinstance(value, str):
-                        self.setVar(f"${name}", value)
-                        return
-
-                if globalVarPattern.match(userInput):
-                    type, name, value = getVar(userInput, '%')
-                    try:
-                        value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
-                    except KeyError:
-                        cli.print(f"There is no type named '{type}'")
-
-                    if not isinstance(value, str):
-                        self.setVar(f"%{name}", value)
-                        json = importFromJSON(jsonPath)
-                        strOfBytes = lambda data: "".join([bit for byte in data for bit in f'{byte:08b} ']).removesuffix(" ")
-                        try:
-                            json['vars'][name]
-                            json['vars'][name] = {"name": name, "type": type, "data": strOfBytes(value.__json__())}
-
-                        except TypeError:
-                            json['vars'].append({"name": name, "type": type, "data": strOfBytes(value.__json__())})
-
-                        exportToJSON(json, jsonPath)
-                        return
-
-                if printVarPattern.match(userInput):
-                    print(self.vars[userInput])
+            sessionVarPattern = re.compile(r"^[a-z]* \$[a-zA-Z0123456789-_+]* *= *.*$")
+            globalVarPattern = re.compile(r"^[a-z]* %[a-zA-Z0123456789-_+]* *= *.*$")
+            printVarPattern = re.compile(r"^[$%][a-zA-Z0123456789-_+]*%?")
+            if sessionVarPattern.match(userInput):
+                type, name, value = getVar(userInput, '$')
+                try:
+                    value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
+                except KeyError:
+                    pass
+                if not isinstance(value, str):
+                    self.setVar(f"${name}", value)
                     return
 
-                if userInput != "":
-                    cli.print(f"The command [bold][cyan]{userInput.split(" ", 1)[0]}[/cyan][/bold] is invalid.")
+            if globalVarPattern.match(userInput):
+                type, name, value = getVar(userInput, '%')
+                try:
+                    value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
+                except KeyError:
+                    cli.print(f"There is no type named '{type}'")
+
+                if not isinstance(value, str):
+                    self.setVar(f"%{name}", value)
+                    json = importFromJSON(jsonPath)
+                    strOfBytes = lambda data: "".join([bit for byte in data for bit in f'{byte:08b} ']).removesuffix(" ")
+                    contains, i = VarsContains(name, json)
+                    if contains and json["confirm-override"]:
+                        contains = input(f"Do you want to Override %{name} (y/n)? ").lower() in ["y", "yes"]
+
+                    if contains:
+                        json['vars'][i] = {"name": name, "type": type, "data": strOfBytes(value.__json__())}
+
+                    else:
+                        json['vars'].append({"name": name, "type": type, "data": strOfBytes(value.__json__())})
+
+                    exportToJSON(json, jsonPath)
+                    return
+
+            if printVarPattern.match(userInput):
+                print(self.vars[userInput])
                 return
 
-            save = userInput.split(" ")[1] == "save" or userInput.split(" ")[1] == "-s"
-            alias, command = [string.strip(" ") for string in userInput.split(" ", 2 if save else 1)[-1].split("=", 1)]
-            if alias.__contains__(" "):
-                cli.print(f"Failed to make alias '{alias}', contains a space.")
-
-            self.aliases[alias] = command
-            if save:
-                json = importFromJSON(jsonPath)
-                json["aliases"][alias] = command
-                exportToJSON(json, jsonPath)
-
+            if userInput != "":
+                cli.print(f"The command [bold][cyan]{userInput.split(" ", 1)[0]}[/cyan][/bold] is invalid.")
             return
 
         if command.names != ['record'] and self.recording:
@@ -548,6 +569,8 @@ class CommandManager:
 
             case _:
                 raise ValueError(f"Command '{command.names[0]}' has an invalid parser preset.")
+
+        if 1 in DEBUG_MODE: print(pui)
 
         if numOfNonDefaultArgs(command.func) == 0:
             command.run()
@@ -698,6 +721,15 @@ def booleanArgs(booleanArgs: list[str], **kwargs) -> dict:
 
     return kwargs
 
+def passedArgs(kwargs: dict[str, Any]) -> bool:
+    if list(kwargs.keys()) != ["args"]:
+        return True
+
+    if kwargs['args'] != []:
+        return False
+
+    return True
+
 
 #---------------------------------------------------
 
@@ -787,7 +819,7 @@ def showStartingPrints(startup : bool = False, **kwargs) -> None:
         cli.print("\nType [bold][yellow]help all[/bold][/yellow] to find all the commands.")
         cli.print("Type [bold][yellow]help env[/bold][/yellow] to find all the environment variables.")
         cli.print("Type [bold][yellow]help *[/bold][/yellow] to find both the commands and the environment variables.")
-        cli.print("═"*TERMINAL_WIDTH)
+        cli.print("="*(TERMINAL_WIDTH-1))
     cli.print()
 
 def println(**kwargs) -> None:
@@ -809,16 +841,16 @@ def printFile(**kwargs) -> None:
     with open(kwargs['args'][0], "r") as file:
         print(file.read().rstrip("\n"))
 
-def execRunCom(filepath : Path, language : str) -> None:
+def execRunCom(filepath : str, language : str) -> None:
     match language:
         case "python":
-            runPyFile(**{"args": filepath})
+            runPyFile(**{"args": f'"{filepath}"'})
 
         case "bin" | "exe":
             os.system(f"start '{filepath}'")
 
         case "web" | "website":
-            os.system(f"start http://{filepath}")
+            os.system(f"start {f"https://{filepath}" if not "//" in filepath else filepath}")
 
         case "html":
             os.system(f"start '{filepath}'")
@@ -830,7 +862,7 @@ def runWConfig(**kwargs) -> None:
     config = importFromJSON(jsonPath)["run"]
     for runConfig in config:
         if runConfig["names"].__contains__(kwargs["args"][0]):
-            execRunCom(Path(runConfig["path"]), runConfig["language"])
+            execRunCom(runConfig["path"], runConfig["language"])
 
 def webcutWConfig(**kwargs) -> None:
     if not needsArgsSetup("webcut", 1, "="):
@@ -839,7 +871,7 @@ def webcutWConfig(**kwargs) -> None:
     config = importFromJSON(jsonPath)["webcut"]
     for webConfig in config:
         if webConfig["names"].__contains__(kwargs["args"][0]):
-            execRunCom(Path(webConfig["url"]), "website")
+            execRunCom(webConfig["url"], "website")
 
 def listdir(**kwargs) -> None:
     try:
@@ -898,7 +930,7 @@ def listdir(**kwargs) -> None:
     match kwargs["t"]:
         case "all":
             if len(folders) > 0:
-                print(f"{kwargs["s"].join(folders)}", end=kwargs["s"], style=kwargs["-folder-color"])
+                print(f"{kwargs["s"].join(folders)}", end=kwargs["s"] if len(files) > 0 else "\n", style=kwargs["-folder-color"])
 
             if len(files) > 0:
                 print(f"{kwargs["s"].join(files)}", style=kwargs["-file-color"])
@@ -1020,11 +1052,13 @@ def copyFile(**kwargs) -> None:
     if not needsArgsSetup("copy", 2)(**kwargs):
         return None
 
-    with open(kwargs["args"][0], "rb") as file:
+    ogPath, *DupPaths = [Path(arg).resolve() for arg in kwargs["args"]]
+
+    with ogPath.open("rb") as file:
         fileContent = file.read()
 
-    for file in kwargs["args"][1:]:
-        with open(file, "wb") as newFile:
+    for file in DupPaths:
+        with file.open("wb") as newFile:
             newFile.write(fileContent)
 
 def removeContent(**kwargs) -> None:
@@ -1034,10 +1068,10 @@ def removeContent(**kwargs) -> None:
 
     if kwargs["rf"]:
         for folder in kwargs['args']:
-            os.system(f"powershell Remove-Item -Path {folder} -Recurse -Force")
+            os.system(f'powershell Remove-Item -Path "{folder}" -Recurse -Force')
     else:
         for file in kwargs['args']:
-            os.system(f"powershell Remove-Item -Path {file} -Force")
+            os.system(f'powershell Remove-Item -Path "{file}" -Force {f'-Stream "{kwargs["s"]}"' if "s" in kwargs.keys() else ""}')
 
 def changeConfig(**kwargs) -> None:
     kwargs = booleanArgs(["u", "-update", "f", "-file"], **kwargs)
@@ -1051,6 +1085,10 @@ def changeConfig(**kwargs) -> None:
 
             exec(f"{var} = {val}")
             print(f"Updated {var}")
+        return
+
+    if kwargs["f"] or kwargs["-file"]:
+        print(PathVar(str(jsonPath.resolve())))
         return
 
     if not needsArgsSetup("config", 2, "1-2")(**kwargs):
@@ -1165,6 +1203,9 @@ def cmdCommand(**kwargs) -> None:
 
 def execCommand(**kwargs) -> None:
     comm.run(kwargs['args'].strip())
+
+def explorer(**kwargs) -> None:
+    os.system(f"powershell ii{f' {kwargs['args']}' if not kwargs['args'] is None else ''}")
 
 def ManageProj(**kwargs) -> None:
 
@@ -1290,6 +1331,12 @@ def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
 
         return bytes([(byte + amount) % 256 for byte in data])
 
+    def decypher(content: bytes, amount: int) -> bytes:
+        if amount < -255 or amount > 255 or (not isinstance(amount, int)):
+            raise ValueError("Cannot encypher - amount must be an integer from -255 to 255")
+
+        return bytes([(byte - amount) % 256 for byte in content])
+
     def encrypt(data: bytes, key: str) -> bytes:
         p1: bytes = bytes([x ^ y for x, y in zip(data, bytes(dupWidth(key, len(data)), "utf-8"))])
         result: bytes = bytes([x ^ y for x, y in zip([len(data) % 256 for _ in range(len(data))], p1)])
@@ -1298,7 +1345,7 @@ def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
     def decrypt(content: bytes, key: str) -> bytes:
         return bytes([(x ^ y) ^ z for x, y, z in zip(content, [len(content) % 256 for _ in range(len(content))], bytes(dupWidth(key, len(content)), 'utf-8'))])
 
-    kwargs: dict = booleanArgs(["e", "d"], **kwargs)
+    kwargs: dict = booleanArgs(["e", "d", "c"], **kwargs)
 
     if not needsArgsSetup("crypt", 1):
         return
@@ -1307,6 +1354,7 @@ def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
 
     if not path.is_file():
         cli.print(f"'{path}' is a directory or it doesn't exist")
+        return
 
     if kwargs["e"]:
 
@@ -1336,6 +1384,9 @@ def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
                 print("You need to ether y, n, yes, or no.")
                 time.sleep(1)
 
+            if kwargs["c"]:
+                encryptedText = encypher(encryptedText, int(kwargs["c"]))
+
             with path.open("wb") as encryptedFile:
                 encryptedFile.write(encryptedText)
 
@@ -1344,6 +1395,9 @@ def crypt(**kwargs) -> None: # pyright: ignore[reportRedeclaration]
 
         with path.open("rb") as encryptedFile:
             content = encryptedFile.read()
+
+        if kwargs["c"]:
+            content = decypher(content, int(kwargs["c"]))
 
         unencryptedContent = decrypt(content, key)
 
@@ -1410,6 +1464,43 @@ def initRecording(comM: CommandManager) -> None:
     comM.commands.append(Command(["record"], record, {"name": "record", "description": "Records Your commands to save as a .csh file.", "has-kwargs": True, "kwargs": {"-l": "Lists all currently recorded commands", "-f": "Saves the recorded commands in given filepath as a .csh file"}}))
     comM.commandNames = [command.names for command in comM.commands]
 
+def aliases(comMan: CommandManager, **kwargs) -> None:
+    if not passedArgs(kwargs):
+        print(*[f'[cyan]{alias}[/cyan] = [green]"{command}"[/green]' for alias, command in comMan.aliases.items()], sep="\n")
+        return
+
+    if not needsArgsSetup("alias", 3)(**kwargs):
+        return
+
+    kwargs = booleanArgs(["l", "g"], **kwargs)
+    if 5 in DEBUG_MODE: print(kwargs)
+    for kwarg, value in kwargs.items():
+        if not kwarg in ["l", "g", "args"]:
+            if 5 in DEBUG_MODE: print(value)
+            kwargs["args"].extend([f"-{kwarg}", f"'{value}'"])
+
+    name = kwargs['args'][0]
+    if 5 in DEBUG_MODE: cli.print(kwargs['args'])
+    command = " ".join(kwargs["args"][2::])
+
+    if kwargs['l'] and kwargs['g']:
+        cli.print(f"You want the alias '{name}' only in the local session and global. Which one (l/g): ")
+        if input().lower() == "g":
+            cli.print(f"Making the alias '{name}' global")
+            kwargs['l'] = False
+
+        else:
+            cli.print(f"Making the alias '{name}' local")
+
+    if (not kwargs['l']) and kwargs['g']:
+        json = importFromJSON(jsonPath)['aliases']
+        json[name] = command
+        exportToJSON(json, jsonPath)
+
+    if 5 in DEBUG_MODE: print(f"{name}: {command}")
+
+    comMan.aliases[name] = command
+
 #--------------------
 
 commands: list[Command] = []
@@ -1425,6 +1516,7 @@ def runShellFile(filepath : Path) -> None:
 
 @runImmediately
 def initCommands() -> None:
+    commands.append(Command(["alias"], lambdaWithKWArgsSetup(lambda kwargs: aliases(comm, **kwargs)), {"name": "aliases", "description": "The interface for using aliases in Custom-Shell.", "has-kwargs": False}))
     commands.append(Command(["print", 'echo'], println, {"name": "print", "description": "Prints the arguments you give it.", "has-kwargs": True, "kwargs": {"-s": "Separating string between each argument", "--color": "Style the printed text"}}))
     commands.append(Command(["exit", "stop"], lambda: os._exit(0), {"name": "exit", "description": "Exits the terminal.", "has-kwargs": False}))
 
@@ -1444,6 +1536,8 @@ def initCommands() -> None:
 
     commands.append(Command(["execute", "start", "exe"], executeFile, {"name": "execute", "description": "Runs an executable file", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["cd"], changeDir, {"name": "changedir", "description": "Changes the current directory.", "has-kwargs": False}))
+
+    commands.append(Command(["explorer"], explorer, {"name": "explorer", "description": "Opens the given path in explorer.", "has-kwargs": False}, "base-split"))
     commands.append(Command(["mcd"], makeAndChangeDir, {"name": "makedir-changedir", "description": "Makes the given path as a directory and changes the current directory", "has-kwargs": False}))
 
     commands.append(Command(["python", "python3", "py"], runPyFile, {"name": "python", "description": "Runs a python file.", "has-kwargs": False}, 'base-split'))
@@ -1477,7 +1571,7 @@ def initCommands() -> None:
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:
-    cli.print(f"[blue]{ENVIRONMENT_VARS["%USER%"]}@{HOSTNAME}[/blue]:[green3]{(str(curdir).replace(str(Path.home()), "~")) if importFromJSON(jsonPath)["~:Home"] else curdir}{str(b"\x00", 'ascii')}[green3][magenta]$", end=' ', style='bold')
+    cli.print(f"[blue]{ENVIRONMENT_VARS["%USER%"]}@{HOSTNAME}[/blue]:[green3]{(str(curdir).replace(str(Path.home()), "~")) if importFromJSON(jsonPath)["~:Home"] else curdir}{str(b"\x00", 'ascii')}[/green3][magenta]$", end=' ', style='bold')
     return cli.input('')
 
 def inputLoop(comM: CommandManager) -> None:
