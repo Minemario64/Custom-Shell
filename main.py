@@ -31,7 +31,7 @@ if __name__ == "__main__":
             os.chdir(curdir)
 
             if path.is_file():
-                changeToInterpreter(comm)
+                changeToInterpreter()
                 release()
                 runShellFile(path)
 

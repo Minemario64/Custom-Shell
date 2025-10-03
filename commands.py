@@ -1,4 +1,4 @@
-ver = [1, 3, 1, ""]
+ver = [2, 0, 0, "beta"]
 
 version = (".".join([str(num) for num in ver[0:3]]), ver[3])
 def Version(sep: str) -> str:
@@ -8,9 +8,9 @@ import os
 import time
 from rich.console import Console
 from pathlib import Path
-from json import load, dumps, dump
 import json.decoder as JSONDecoder
-import inspect
+from utils import *
+from utils.parsing import *
 import re
 from projectManager import *
 from stdouts import *
@@ -24,13 +24,17 @@ from getpass import getpass
 
 # GLOBAL SETTINGS
 DEV: bool = True
-REPLACE_V2: bool = False
 DEBUG_MODE: list[int] = []
 DEBUG_MODES: list[int] = [
     1, 2, 3, 4, 5
 ]
 KWARGS: list[str] = [
-    "--mode"
+    "--mode",
+    "--keep",
+    "--nodebug",
+    "-nd",
+    "-k",
+    "--keep"
 ]
 NON_BOOL_KWARGS: list[str] = [
     "--mode"
@@ -65,69 +69,6 @@ def hold(func: Callable, *args, **kwargs) -> None:
 def release() -> None:
     for command in heldCommands:
         command[0](*command[1], **command[2])
-
-def importFromJSON(filename: str | Path) -> dict:
-    filepath = Path(filename) if isinstance(filename, str) else filename
-    if filepath.exists():
-        with open(filepath, "r") as file:
-            return load(file)
-
-    raise FileNotFoundError(f"'{str(filepath)}' does not exist")
-
-def exportToJSON(data: dict, filename: str | Path, indent : bool = True) -> None:
-    filepath = Path(filename) if isinstance(filename, str) else filename
-    if filepath.exists():
-        if indent:
-            with open(filepath, "w") as file:
-                file.write(dumps(data, indent=4))
-        else:
-            with open(filepath, "w") as file:
-                dump(data, file)
-
-def numOfNonDefaultArgs(func) -> int:
-    sig = inspect.signature(func)
-    return len([param for param in sig.parameters.values() if param.default == inspect.Parameter.empty])
-
-def flatten(l : list) -> list:
-    newList : list = []
-    for item in l:
-        if not isinstance(item, list):
-            newList.append(item)
-        else:
-            for extraItem in flatten(item):
-                newList.append(extraItem)
-    return newList
-
-def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : int = 0) -> int | str:
-    idx : int = 0 if start else idxStart
-    for item in l:
-        if (item == targetVal) and (type(item) == type(targetVal)):
-            return idx
-        if isinstance(item, list):
-            itemResult = indexThroughLayeredList(item, targetVal, False, idx)
-            if isinstance(itemResult, int):
-                return itemResult
-            idx = int(itemResult) - 1
-        idx += 1
-    if start:
-        raise IndexError(f"Does not have the value {repr(targetVal)}")
-
-    return str(idx) if len(l) > 0 else str(idx + 1)
-
-def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int:
-    idx : int = 0 if start else idxStart
-    for item in l:
-        if (item == targetVal) and (type(item) == type(targetVal)):
-            return idx
-        if isinstance(item, list):
-            itemResult = indexIntoLayeredList(item, targetVal, False, idx)
-            if isinstance(itemResult, int) and itemResult != -1:
-                return itemResult
-        idx += 1 if start else 0
-    if start:
-        raise IndexError(f"Does not have the value {repr(targetVal)}")
-
-    return -1
 
 def VarsContains(key: str, jsonDict: dict[str, Any]) -> tuple[bool, int | None]:
     for i, d in enumerate(jsonDict["vars"]):
@@ -181,11 +122,24 @@ def print(*textArgs, sep: str = " ", end: str = "\n", style: str | None = None, 
     if flush:
         stdout.flush()
 
-try:
-    if sys.argv[1:].__contains__("--version") or (sys.argv[1:].__contains__("-k") or sys.argv[1:].__contains__("--keep")) or ([arg for arg in sys.argv[1:] if not arg.startswith("-")][0].__contains__("neofetch") or Path([arg for arg in sys.argv[1:] if not arg.startswith("-")][0]).resolve(True)):
+@runImmediately
+def runStats() -> None:
+    global HOSTNAME
+    if (len(sys.argv[1:]) == 0) or (len(sys.argv[1:]) == 2 and Path(sys.argv[1]).resolve().exists()) or (len(sys.argv[1:]) == 1 and Path(sys.argv[1]).resolve().exists()):
         HOSTNAME = SystemStats()['hostname']
 
-except (FileNotFoundError, IndexError, OSError):
+    if sys.argv[1:].__contains__("--version"):
+        return
+
+    if not (len(sys.argv[1:]) == 2 and "neofetch" in sys.argv[2]) or (len(sys.argv[1:]) == 1 and (not Path(sys.argv[1]).resolve().exists()) and "neofetch" in sys.argv[1]):
+        return
+
+    if not (len(sys.argv[1:]) == 1 and Path(sys.argv[1]).resolve().is_file() and Path(sys.argv[1]).resolve().read_text().__contains__("neofetch")):
+        return
+
+    if not ( "-k" in sys.argv[1:] or "--keep" in sys.argv[1:]):
+        return
+
     HOSTNAME = SystemStats()['hostname']
 
 jsonTypesToBytes = lambda data, sep=" ": bytes([int(binStr, 2) for binStr in data.split(sep)])
@@ -197,9 +151,9 @@ jsonPath = Path.home().joinpath(".csconfig")
 
 os.chdir(curdir)
 
-configExport = {"~:Home": False, "confirm-override": True, "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "run": [], "webcut": [], "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
-configTypes = {"~:Home": "bool", "confirm:override": "bool", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "run": "managed", "webcut": "managed", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
-configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String"}
+configExport = {"~:Home": False, "confirm-override": True, "code-editor": "", "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "run": [], "webcut": [], "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
+configTypes = {"~:Home": "bool", "confirm:override": "bool", "code-editor": "program-path", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "run": "managed", "webcut": "managed", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
+configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String", "program-path": "Program Path"}
 
 def updateConfig() -> None:
     try:
@@ -236,7 +190,7 @@ else:
 envVars = {
     "FILEDIR": PathVar(str(pyPath)),
     "USER": StrVar(Path.home().name),
-    "ROOT": PathVar(str(Path.root)),
+    "ROOT": PathVar(str(Path.home().parent.parent)),
     "APPDATA": PathVar(str(Path.home().joinpath("AppData/Roaming"))),
     "LOCALAPPDATA": PathVar(str(Path.home().joinpath("AppData/Local"))),
     "PYDIR": PathVar(str(Path(importFromJSON(jsonPath)["pypath"]))) if importFromJSON(jsonPath)["needpypath"] else StrVar(''),
@@ -271,90 +225,9 @@ class Command:
         print(self.helpStr)
 
     def __repr__(self) -> str:
-        return f"<Command: {self.names} calls {self.func}>"
+        return f"<Command: {self.helpInfo["name"]} calls {self.func} by using {", ".join(self.names)}>"
 
 recordedCommands: list[str] = []
-
-def combineQuotes(args: list[str]) -> list[str]:
-    newargs = []
-    inquote = False
-    quote = ""
-    text = ""
-    if 2 in DEBUG_MODE: print(",".join(args))
-    for arg in args:
-        if arg.__contains__('"') or arg.__contains__("'"):
-            if arg.__contains__(quote) and inquote:
-                inquote = False
-                text += arg.removesuffix(quote)
-                quote = ""
-                newargs.append(text)
-                text = ""
-
-            elif not inquote:
-                inquote = True
-                quote = '"' if arg.__contains__('"') else "'"
-                text += arg.removeprefix(quote)
-                if arg.endswith(quote):
-                    if 2 in DEBUG_MODE: print(f"Just 1 arg with {quote}, {arg}")
-                    text = text[0:-1]
-                    inquote = False
-                    newargs.append(text)
-                    text = ""
-                    quote = ""
-
-            else:
-                text += arg
-
-        else:
-            if inquote:
-                text += arg
-
-            else:
-                newargs.append(arg)
-
-        if inquote:
-            text += ' '
-
-    if inquote:
-        newargs.append(text[0:-1])
-
-    return newargs
-
-def getVar(text: str, mode: Literal['$', '%', '%%']) -> tuple[str, str, str]:
-    type = ''
-    name = ''
-    value = ''
-    part = 0
-    for char in text:
-        match part:
-            case 0:
-                if char == mode[0]:
-                    part += 1
-                    continue
-
-                if char == " ":
-                    continue
-
-                type += char
-
-            case 1:
-                if char == "=":
-                    part += 1
-                    name = name.rstrip(" ")
-                    if mode == '%%':
-                        name = name.removesuffix("%")
-                    continue
-
-                name += char
-
-            case 2 | 3:
-                if char == " " and part == 2:
-                    continue
-
-                value += char
-                part = 3
-
-    return (type, name, value)
 
 class CommandManager:
 
@@ -394,24 +267,14 @@ class CommandManager:
         for idx, item in enumerate(result):
             if isinstance(item, list):
                 for i, arg in enumerate(item):
-                    if REPLACE_V2:
-                        if arg != '':
-                            print(arg)
-                            print(self.vars.items())
-                            for name, val in self.vars.items():
-                                spl = arg.split(name)
-                                print(*[f"{len(itm) - 1} {itm} | {name}: {val} | {spl}" for itm in spl], sep="\n")
-                                l = [(itm[len(itm) - 1] != "\\" and i != len(itm) - 1) for i, itm in enumerate(spl)]
-                                print(l, spl)
-                                if len(l) > 1:
-                                    item[i] = "".join([(itm + str(val)) if addVal else (itm[0:-1] + name) for itm, addVal in zip(spl, l)])
+                    for name, val in self.vars.items():
+                                if arg == name:
+                                    item[i] = arg.replace(name, str(val))
                                     arg = item[i]
-                                    print("Updated")
 
-                    else:
-                        for name, val in self.vars.items():
-                                item[i] = arg.replace(name, str(val))
-                                arg = item[i]
+                                elif arg == f"/{name}":
+                                    item[i] = arg.replace(f"/{name}", name)
+                                    arg = item[i]
 
                 result[idx] = item
                 continue
@@ -511,7 +374,7 @@ class CommandManager:
             globalVarPattern = re.compile(r"^[a-z]* %[a-zA-Z0123456789-_+]* *= *.*$")
             printVarPattern = re.compile(r"^[$%][a-zA-Z0123456789-_+]*%?")
             if sessionVarPattern.match(userInput):
-                type, name, value = getVar(userInput, '$')
+                type, name, value = parseVar(userInput, '$')
                 try:
                     value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
                 except KeyError:
@@ -521,7 +384,7 @@ class CommandManager:
                     return
 
             if globalVarPattern.match(userInput):
-                type, name, value = getVar(userInput, '%')
+                type, name, value = parseVar(userInput, '%')
                 try:
                     value = TypeRegistry.types[TypeRegistry.nicknames[type]](value)
                 except KeyError:
@@ -580,42 +443,6 @@ class CommandManager:
         if stdout != __stdout__ and mode != 1:
             stdout.__close__()
             stdout = ConsoleStdout(cli)
-
-# Better Addon Attempt
-#------------------------------------
-
-class PluginRegistry(type):
-    plugins: dict = {}
-
-    def __new__(cls, name, bases, dct):
-
-        try:
-            PluginRegistry.plugins[name]
-            hold(cli.print, f"[bold][red]Error[/bold][/red]: Plugin '{name}' failed to import; plugin name '[red][bold]{name}[/bold][/red]' already exists")
-
-        except KeyError:
-            newPluginClass = super().__new__(cls, name, bases,  dct)
-
-            if bases != ():
-                PluginRegistry.plugins[name] = newPluginClass
-                if DEBUG:
-                    cli.print(f"Registered Plugin: [bold][green]{name}")
-            else:
-                if DEBUG:
-                    cli.print(f"Created Plugin Base: [bold][green]{name}")
-
-            return newPluginClass
-
-class Plugin(metaclass=PluginRegistry):
-
-    def __init__(self, filepath : Path) -> None:
-        self.filepath = filepath
-
-    def run(self):
-        raise NotImplementedError
-
-    def close(self):
-        raise NotImplementedError
 
 #------------------------------------------------------
 
@@ -729,62 +556,6 @@ def passedArgs(kwargs: dict[str, Any]) -> bool:
         return False
 
     return True
-
-
-#---------------------------------------------------
-
-addonClasses: list = []
-
-def importPlugins() -> None:
-    config = importFromJSON(jsonPath)
-    if config["addondir"] == "":
-        return None
-    os.chdir(Path.home())
-    addondir = Path(config["addondir"]).resolve()
-    os.chdir(curdir)
-
-
-    global addonClasses
-
-    for file in addondir.iterdir():
-        if file.is_file() and file.suffix == ".cshplugin":
-            with open(file, "r") as filecontent:
-                exec(deCypher(deCypher(filecontent.read(), "alphabet", 13), "numeric", 3), globals())
-                addonClasses.append(globals()[list(PluginRegistry.plugins.keys())[-1]](file.name))
-                exec(f"{list(PluginRegistry.plugins.keys())[-1]}('{(file.name)}').run()", globals())
-
-def managePlugins(**kwargs) -> None:
-    global addonClasses
-    kwargs = booleanArgs(["l"], **kwargs)
-    if kwargs["l"]:
-        cli.print(*tuple(cls.__class__.__name__ for cls in addonClasses if not isinstance(cls, str)), sep="    ")
-        return None
-
-    if not needsArgsSetup("addons", 2, "=")(**kwargs):
-        return None
-
-    match kwargs["args"][0]:
-        case "close":
-            idx = list(PluginRegistry.plugins.keys()).index(kwargs["args"][1])
-            addonClasses[idx].close()
-            addonClasses[idx] = kwargs["args"][1]
-
-        case "run":
-            idx = list(PluginRegistry.plugins.keys()).index(kwargs["args"][1])
-            addonClasses[idx] = PluginRegistry.plugins[kwargs["args"][1]]
-            addonClasses[idx].run()
-
-        case "restart":
-            if kwargs["args"][1] == "all":
-                for pluginname in PluginRegistry.plugins.keys():
-                    cli.print(f"Closing Plugin: [bold][yellow]{pluginname}")
-                    PluginRegistry.plugins[pluginname] = None
-                    globals().pop(pluginname)
-
-                PluginRegistry.plugins = {key:value for key, value in PluginRegistry.plugins.items() if value != None}
-                addonClasses = []
-
-                importPlugins()
 
 #---------------------------------------------------
 
@@ -956,10 +727,10 @@ def makeDir(**kwargs) -> None:
         curdir.joinpath(folder).mkdir(exist_ok=True)
 
 def openVSCode(**kwargs) -> None:
-    if not needsArgsSetup("vscode", 1, "=")(**kwargs):
+    if not needsArgsSetup("code", 1, "=")(**kwargs):
         return None
 
-    os.system(f'code {kwargs["args"][0]}')
+    os.system(f"cmd /c start {importFromJSON(jsonPath)['code-editor'] if importFromJSON(jsonPath)['code-editor'] != "" else "code"} {kwargs['args'][0]}")
 
 def openWebsite(**kwargs) -> None:
     if not needsArgsSetup("website", 1)(**kwargs):
@@ -1042,11 +813,31 @@ def runHTML(**kwargs) -> None:
     for file in kwargs["args"]:
         os.system(f'start {file}')
 
-def renameFile(**kwargs) -> None:
-    if not needsArgsSetup("rename", 2, "=")(**kwargs):
+def moveFile(**kwargs) -> None:
+    if not needsArgsSetup("move", 2)(**kwargs):
         return None
 
-    os.system(f"ren {kwargs["args"][0]} {kwargs['args'][1]}")
+    ogPath, newPath = [Path(path) for path in kwargs["args"][0:1]]
+
+    with ogPath.open("rb") as file:
+        fileContent = file.read()
+
+    ogPath.unlink()
+
+    if newPath.exists():
+        if not input(f"Are you sure you want to overwrite '{newPath}' (y/n)? ").lower() in ["y", "yes"]:
+            cli.print("Aborting move.")
+            return
+
+
+    if newPath.is_dir():
+        newPath.rmdir()
+
+    else:
+        newPath.unlink()
+
+    with newPath.open("xb") as newFile:
+        newFile.write(fileContent)
 
 def copyFile(**kwargs) -> None:
     if not needsArgsSetup("copy", 2)(**kwargs):
@@ -1142,6 +933,11 @@ def changeConfig(**kwargs) -> None:
 
             case "str":
                 json[kwargs["args"][0]] = inp
+
+            case "program-path":
+                if Path(inp).is_file() and Path(inp).suffix in [".exe", ".cmd", ".bat", ".ps1"]:
+                    json[kwargs["args"][0]] = str(Path(inp).resolve(True))
+                    continue
 
             case _:
                 if DEBUG:
@@ -1528,7 +1324,7 @@ def initCommands() -> None:
     commands.append(Command(["makefile", "mkf", "touch"], makeFile, {"name": "touch", "description": "Makes files.", "has-kwargs": False}))
     commands.append(Command(["makedir", "mkdir"], makeDir, {"name": "makedir", "description": "Makes directories.", "has-kwargs": False}))
 
-    commands.append(Command(["vscode", "code"], openVSCode, {"name": "vscode", "description": "Opens the given file or folder in vscode.", "has-kwargs": False}))
+    commands.append(Command(["code"], openVSCode, {"name": "code-editor", "description": "Opens the given file or folder in the default code editor.", "has-kwargs": False}))
     commands.append(Command(["website", "web"], openWebsite, {"name": "website", "description": "Opens the given websites in your default browser.", "has-kwargs": False}))
 
     commands.append(Command(["wait", "sleep"], wait, {"name": "sleep", "description": "Waits the given amount of time.", "has-kwargs": True, "kwargs": {"--format": "Takes the given argument and gives it a different unit of time: 'secs', 'mins'"}}))
@@ -1543,7 +1339,7 @@ def initCommands() -> None:
     commands.append(Command(["python", "python3", "py"], runPyFile, {"name": "python", "description": "Runs a python file.", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["html"], runHTML, {"name": "html", "description": "Runs the given HTML files.", "has-kwargs": False}))
 
-    commands.append(Command(["rename", "ren"], renameFile, {"name": "rename", "description": "Renames a given file.", "has-kwargs": False}))
+    commands.append(Command(["move", "mv"], moveFile, {"name": "move", "description": "Moves a file to a new path. Can also be used to rename files.", "has-kwargs": False}))
     commands.append(Command(["copy"], copyFile, {"name": "copy", "description": "Copies the contents of a text file to the other given files.", "has-kwargs": False}))
 
     commands.append(Command(["remove", "rm"], removeContent, {"name": "remove", "description": "Removes a file or folder and all it's content.", "has-kwargs": False}))
@@ -1552,21 +1348,21 @@ def initCommands() -> None:
     commands.append(Command(["webcut", "webc"], webcutWConfig, {"name": "webcut", "description": "Opens up a set website via a config.", "has-kwargs": False}))
     commands.append(Command(["version", "ver"], lambda: print(f"[bold][red]{Version(" ")}[/bold][/red]"), {"name": "version", "description": "Prints the current version of the shell.", "has-kwargs": False}))
 
-    commands.append(Command(["addons"], managePlugins, {"name": "addons", "description": "Manages all imported addons.", "has-kwargs": True, "kwargs": {"-l": "Lists the currently imported addons."}}))
     commands.append(Command(["system", "sys"], sysCommand, {"name":"system", "description": "Runs the given system command.", "has-kwargs": False}, "base-split"))
-
     commands.append(Command(["powershell", "ps"], psCommand, {"name": "system-powershell", "description": "Runs the given system command in powershell.", "has-kwargs": False}, 'base-split'))
+
     commands.append(Command(["cmd"], cmdCommand, {"name": "system-cmd", "description": "Runs the given system command in command prompt.", "has-kwargs": False}, 'base-split'))
-
     commands.append(Command(["config"], changeConfig, {"name": "configure", "description": "Changes the config file", "has-kwargs": True, "kwargs": {"-u / -update": "Updates all the items that use the config fields."}}))
+
     commands.append(Command(['csh', 'shell', 'sh'], lambdaWithArgsSetup(runShellFile), {'name': 'shell', 'description': 'Runs a .csh file', 'has-kwargs': False}))
-
     commands.append(Command(["project", "projmanager", "manager", "proj", "pm"], ManageProj, {"name": "project-manager", "description": "Runs the Custom-Shell Project Manager CLI.", "has-kwargs": False}, 'base-split'))
-    commands.append(Command(["bookmarks", "marks"], bookmark, {"name": "bookmarks", "description": "Manages bookmarks, allowing you to add, go to, and list your bookmarks.", "has-kwargs": True, "kwargs": {"-s": "When listing bookmarks, this is used for the separating characters between bookmarks", "--color": "When listing bookmarks, this is used to style the bookmarks."}}))
 
+    commands.append(Command(["bookmarks", "marks"], bookmark, {"name": "bookmarks", "description": "Manages bookmarks, allowing you to add, go to, and list your bookmarks.", "has-kwargs": True, "kwargs": {"-s": "When listing bookmarks, this is used for the separating characters between bookmarks", "--color": "When listing bookmarks, this is used to style the bookmarks."}}))
     commands.append(Command(["release"], lambda: release(), {"name": "release", "description": "Runs all the commands that were redirected to hold.", "has-kwargs": False}))
+
     commands.append(Command(["neofetch", "sysinfo"], SysStats, {"name": "system-info", "description": "Prints the system info of your computer.", "has-kwargs": False}))
     commands.append(Command(["crypt", "gpg", "enc"], crypt, {"name": "Crypt", "description": "Encrypts and decrypts files, with gpg like syntax.", "has-kwargs": True, "kwargs": {"-e": "Encryption mode (encrypts the file)", "-d": "Decryption mode", "-f": "Makes the result be saved in a different file"}}))
+
     commands.append(Command(["exec", "execute", "com", "command"], execCommand, {"name": "execute", "description": "Executes the command that you give it", "has-kwargs": False}, 'base-split'))
     commands.append(helpCommand)
 
@@ -1579,17 +1375,18 @@ def inputLoop(comM: CommandManager) -> None:
         ui = showCWDAndGetInput()
         comM.run(ui.strip(" "))
 
-def changeToInterpreter(comM: CommandManager):
-    commands.insert(-1, Command(["startinput"], lambda: inputLoop(comM), {"name": "startinput", "description": "Starts the user input from a .csh file.", "has-kwargs": False}))
-    comM.commands = commands
-    comM.commandNames = [command.names for command in comM.commands]
+INTERPRETER_ONLY_COMMANDS = [
+    Command(["startinput"], lambda: inputLoop(comm), {"name": "startinput", "description": "Starts the user input from a .csh file.", "has-kwargs": False})
+]
 
-importPlugins()
+def changeToInterpreter():
+    commands.insert(-1, INTERPRETER_ONLY_COMMANDS[0])
+    comm.commands = commands
+    comm.commandNames = [command.names for command in comm.commands]
 
 configUpdates = {"comm.aliases": "{alias: command for alias, command in importFromJSON(jsonPath)['aliases'].items()}",
                  "cli": "Console(highlight=importFromJSON(jsonPath)[\"Auto-Highlighting\"])",
                  "envVars[\"PYDIR\"]": "PathVar(str(Path(importFromJSON(jsonPath)[\"pypath\"]))) if importFromJSON(jsonPath)[\"needpypath\"] else StrVar(''),",
                  "ENVIRONMENT_VARS": "{f\"%{name}%\": value for name, value in envVars.items()} | {\"~\": PathVar(str(Path.home()))}",
                  "comm.vars": "ENVIRONMENT_VARS | {f\"%{dct[\"name\"]}\": TypeRegistry.types[TypeRegistry.nicknames[dct['type']]](TypeRegistry.types[TypeRegistry.nicknames[dct['type']]].__jload__(jsonTypesToBytes(dct[\"data\"]))) for dct in importFromJSON(jsonPath)['vars']}",
-                 "$func": "comm.run('addons restart all')"
 }

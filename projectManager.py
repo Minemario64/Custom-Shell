@@ -10,49 +10,7 @@ from json import load, dumps, dump
 import win32file
 import win32con
 import os
-
-def importFromJSON(filename: str | Path) -> dict:
-    filepath = Path(filename) if isinstance(filename, str) else filename
-    if filepath.exists():
-        with open(filepath, "r") as file:
-            return load(file)
-
-    raise FileNotFoundError(f"'{str(filepath)}' does not exist")
-
-def exportToJSON(data: dict | list, filename: str | Path, indent : bool = True) -> None:
-    filepath = Path(filename) if isinstance(filename, str) else filename
-    if filepath.exists():
-        if indent:
-            with open(filepath, "w") as file:
-                file.write(dumps(data, indent=4))
-        else:
-            with open(filepath, "w") as file:
-                dump(data, file)
-
-def flatten(l : list) -> list:
-    newList : list = []
-    for item in l:
-        if not isinstance(item, list):
-            newList.append(item)
-        else:
-            for extraItem in flatten(item):
-                newList.append(extraItem)
-    return newList
-
-def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int:
-    idx : int = 0 if start else idxStart
-    for item in l:
-        if (item == targetVal) and (type(item) == type(targetVal)):
-            return idx
-        if isinstance(item, list):
-            itemResult = indexIntoLayeredList(item, targetVal, False, idx)
-            if isinstance(itemResult, int) and itemResult != -1:
-                return itemResult
-        idx += 1 if start else 0
-    if start:
-        raise IndexError(f"Does not have the value {repr(targetVal)}")
-
-    return -1
+from utils import *
 
 def hidePath(path: Path) -> None:
    if path.exists():
