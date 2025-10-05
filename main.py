@@ -20,7 +20,7 @@ if __name__ == "__main__":
     match len(sysArgv):
         case 0:
             if sys.argv[1:].__contains__("--version"):
-                comm.run("echo Custom-Shell Version: [red bold]%V%[/red bold]")
+                comm.run("echo Custom-Shell Version:[red bold] %V% [/red bold]")
                 os._exit(0)
 
             main()

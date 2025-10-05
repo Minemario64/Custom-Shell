@@ -1297,6 +1297,28 @@ def aliases(comMan: CommandManager, **kwargs) -> None:
 
     comMan.aliases[name] = command
 
+def visDir(**kwargs) -> None:
+    if not needsArgsSetup("pathviz", 2, "1-2")(**kwargs):
+        return
+
+    from commandUtils.dirTreeGen import generateDirTree
+
+    print(generateDirTree(Path(kwargs['args'][0]).resolve(), '/' if len(kwargs['args']) < 2 else kwargs["args"][1]))
+
+def serve(**kwargs) -> None:
+    if not needsArgsSetup("serve", 1, "=")(**kwargs):
+        return
+
+    kwargs = defaultArgs({"-port": "8000"}, **kwargs)
+    os.chdir(Path(kwargs["args"][0]).resolve())
+    print(f"Starting http server on port {kwargs['-port']} at path {Path.cwd()}")
+    try:
+        os.system(f"python -m http.server {kwargs['-port']}")
+
+    except KeyboardInterrupt:
+        print(f"Stopped Server")
+    os.chdir(curdir)
+
 #--------------------
 
 commands: list[Command] = []
@@ -1364,6 +1386,9 @@ def initCommands() -> None:
     commands.append(Command(["crypt", "gpg", "enc"], crypt, {"name": "Crypt", "description": "Encrypts and decrypts files, with gpg like syntax.", "has-kwargs": True, "kwargs": {"-e": "Encryption mode (encrypts the file)", "-d": "Decryption mode", "-f": "Makes the result be saved in a different file"}}))
 
     commands.append(Command(["exec", "execute", "com", "command"], execCommand, {"name": "execute", "description": "Executes the command that you give it", "has-kwargs": False}, 'base-split'))
+    commands.append(Command(["pathviz", 'gendirtree'], visDir, {"name": "visualize-path", "description": "Displays a tree of a directory.", "has-kwargs": False}))
+
+    commands.append(Command(["serve", "httprun"], serve, {"name": "serve-http", "description": "Creates an http server at a given path and a port", "has-kwargs": False}))
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:

@@ -1,7 +1,10 @@
 {
     "cSpell.words": [
         "cshplugin",
+        "gendirtree",
+        "httprun",
         "mkproj",
+        "pathviz",
         "projmanager"
     ],
     "bookmarks.saveBookmarksInProject": true
