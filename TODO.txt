@@ -12,7 +12,6 @@ COMMANDS:
 - archivz : Create compressed archives with configurable presets
 - trash : Move files into the system trash
 - diffy : show colorful, side-by-side diffs with highlights
-- serve : Launch an HTTP server
 - extract : Auto-extract archives
 - dups : Find duplicate files by checksum
 - meminfo : Shows detailed memory usage, caches, and swap stats

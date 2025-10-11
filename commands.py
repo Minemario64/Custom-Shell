@@ -18,7 +18,7 @@ from caesarCypher import *
 from typing import Literal, Any, Callable
 from varTypes import *
 from asciiart import display, TERMINAL_WIDTH
-from stats import SystemStats
+from stats import SystemStats, ip, HAS_CACHED, CACHE_THREAD
 from getpass import getpass
 
 
@@ -126,7 +126,7 @@ def print(*textArgs, sep: str = " ", end: str = "\n", style: str | None = None, 
 def runStats() -> None:
     global HOSTNAME
     if (len(sys.argv[1:]) == 0) or (len(sys.argv[1:]) == 2 and Path(sys.argv[1]).resolve().exists()) or (len(sys.argv[1:]) == 1 and Path(sys.argv[1]).resolve().exists()):
-        HOSTNAME = SystemStats()['hostname']
+        HOSTNAME = ip.gethostname()
 
     if sys.argv[1:].__contains__("--version"):
         return
@@ -140,7 +140,7 @@ def runStats() -> None:
     if not ( "-k" in sys.argv[1:] or "--keep" in sys.argv[1:]):
         return
 
-    HOSTNAME = SystemStats()['hostname']
+    HOSTNAME = ip.gethostname()
 
 jsonTypesToBytes = lambda data, sep=" ": bytes([int(binStr, 2) for binStr in data.split(sep)])
 
@@ -560,6 +560,9 @@ def passedArgs(kwargs: dict[str, Any]) -> bool:
 #---------------------------------------------------
 
 def SysStats(**kwargs) -> None:
+    if not HAS_CACHED:
+        CACHE_THREAD.join()
+
     stats: dict[str, Any] = SystemStats()
     kwargs = defaultArgs({"-asciiversion": stats["osv"], "-asciiart": "windows"}, **kwargs)
 

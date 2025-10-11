@@ -7,6 +7,8 @@ import socket as ip
 import time
 from math import floor
 
+HAS_CACHED: bool = False
+
 def numAsBytesToStr(num: int | float) -> str:
     power: int = 1024
     unitIdx: int = 0
@@ -65,3 +67,17 @@ if __name__ == "__main__":
 
     print("Running...")
     print(SystemStats())
+
+else:
+    import threading
+    import pythoncom
+
+    def runSysStats() -> None:
+        global HAS_CACHED
+        pythoncom.CoInitialize()
+        _SysStats()
+        pythoncom.CoUninitialize()
+        HAS_CACHED = True
+
+    CACHE_THREAD = threading.Thread(target=runSysStats, daemon=True)
+    CACHE_THREAD.start()
