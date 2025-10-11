@@ -11,7 +11,6 @@ COMMANDS:
 - timer : Run a command after a certain amount of time (and notify)
 - archivz : Create compressed archives with configurable presets
 - trash : Move files into the system trash
-- diffy : show colorful, side-by-side diffs with highlights
 - extract : Auto-extract archives
 - dups : Find duplicate files by checksum
 - meminfo : Shows detailed memory usage, caches, and swap stats

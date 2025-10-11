@@ -1,11 +1,14 @@
 {
     "cSpell.words": [
         "cshplugin",
+        "diffy",
+        "gendiff",
         "gendirtree",
         "httprun",
         "mkproj",
         "pathviz",
-        "projmanager"
+        "projmanager",
+        "pythoncom"
     ],
     "bookmarks.saveBookmarksInProject": true
 }

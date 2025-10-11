@@ -151,8 +151,8 @@ jsonPath = Path.home().joinpath(".csconfig")
 
 os.chdir(curdir)
 
-configExport = {"~:Home": False, "confirm-override": True, "code-editor": "", "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "run": [], "webcut": [], "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
-configTypes = {"~:Home": "bool", "confirm:override": "bool", "code-editor": "program-path", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "run": "managed", "webcut": "managed", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
+configExport = {"~:Home": False, "confirm-override": True, "code-editor": "", "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
+configTypes = {"~:Home": "bool", "confirm:override": "bool", "code-editor": "program-path", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
 configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String", "program-path": "Program Path"}
 
 def updateConfig() -> None:
@@ -1322,6 +1322,16 @@ def serve(**kwargs) -> None:
         print(f"Stopped Server")
     os.chdir(curdir)
 
+def diffy(**kwargs) -> None:
+    if not needsArgsSetup("diffy", 2, "2-4")(**kwargs):
+        return
+
+    from commandUtils.diffy.gen import genDiffFilesText
+
+    with Path(kwargs["args"][0]).resolve().open("r", encoding="utf-8" if len(kwargs["args"]) == 2 else kwargs["args"][2]) as file1:
+        with Path(kwargs["args"][1]).resolve().open("r", encoding="utf-8" if len(kwargs["args"]) <= 3 else kwargs["args"][3]) as file2:
+            print(str(genDiffFilesText(file1, file2)))
+
 #--------------------
 
 commands: list[Command] = []
@@ -1368,9 +1378,6 @@ def initCommands() -> None:
     commands.append(Command(["copy"], copyFile, {"name": "copy", "description": "Copies the contents of a text file to the other given files.", "has-kwargs": False}))
 
     commands.append(Command(["remove", "rm"], removeContent, {"name": "remove", "description": "Removes a file or folder and all it's content.", "has-kwargs": False}))
-    commands.append(Command(["run"], runWConfig, {"name": "run", "description": "Runs a set file via a config.", "has-kwargs": False}))
-
-    commands.append(Command(["webcut", "webc"], webcutWConfig, {"name": "webcut", "description": "Opens up a set website via a config.", "has-kwargs": False}))
     commands.append(Command(["version", "ver"], lambda: print(f"[bold][red]{Version(" ")}[/bold][/red]"), {"name": "version", "description": "Prints the current version of the shell.", "has-kwargs": False}))
 
     commands.append(Command(["system", "sys"], sysCommand, {"name":"system", "description": "Runs the given system command.", "has-kwargs": False}, "base-split"))
@@ -1392,6 +1399,7 @@ def initCommands() -> None:
     commands.append(Command(["pathviz", 'gendirtree'], visDir, {"name": "visualize-path", "description": "Displays a tree of a directory.", "has-kwargs": False}))
 
     commands.append(Command(["serve", "httprun"], serve, {"name": "serve-http", "description": "Creates an http server at a given path and a port", "has-kwargs": False}))
+    commands.append(Command(["diffy", "diff", "gendiff"], diffy, {"name": "diffy", "description": "shows a diff between 2 files", "has-kwargs": False}))
     commands.append(helpCommand)
 
 def showCWDAndGetInput() -> str:
