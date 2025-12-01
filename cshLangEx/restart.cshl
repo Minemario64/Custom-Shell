@@ -1,0 +1,14 @@
+// This is an example for a restart script
+
+If no args are passed, $1 will be undefined (Falsie)
+\\
+
+if !$1 {
+	var path $startDir = ./
+	exe $ENV:PROGFILE $startDir
+} else {
+	exe $ENV:PROGFILE $1.abspath()
+}
+
+# A compact version would be: if !$1 {var path $startDir = ./ ; exe $ENV:PROGFILE $startDir} else {exe $ENV:PROGFILE $1.abspath()}
+# OR even more compact:       if !$1 {exe $ENV:PROGFILE $ENV:CWD}else{execom(exe $ENV:PROGFILE $1.abspath()}

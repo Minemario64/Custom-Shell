@@ -29,27 +29,27 @@
 					"label": "Version and Constants"
 				},
 				{
-					"line": 146,
+					"line": 147,
 					"column": 0,
 					"label": "Mutable Vars"
 				},
 				{
-					"line": 231,
+					"line": 232,
 					"column": 0,
 					"label": "Command Manager"
 				},
 				{
-					"line": 446,
+					"line": 451,
 					"column": 0,
 					"label": "Helper Funcs"
 				},
 				{
-					"line": 559,
+					"line": 564,
 					"column": 0,
 					"label": "Command Func Implementaions"
 				},
 				{
-					"line": 1334,
+					"line": 1364,
 					"column": 0,
 					"label": "Commands"
 				}

@@ -127,6 +127,7 @@ def runStats() -> None:
     global HOSTNAME
     if (len(sys.argv[1:]) == 0) or (len(sys.argv[1:]) == 2 and Path(sys.argv[1]).resolve().exists()) or (len(sys.argv[1:]) == 1 and Path(sys.argv[1]).resolve().exists()):
         HOSTNAME = ip.gethostname()
+        return
 
     if sys.argv[1:].__contains__("--version"):
         return
@@ -435,10 +436,14 @@ class CommandManager:
 
         if 1 in DEBUG_MODE: print(pui)
 
-        if numOfNonDefaultArgs(command.func) == 0:
-            command.run()
-        else:
-            command.run(**pui)
+        try:
+            if numOfNonDefaultArgs(command.func) == 0:
+                command.run()
+            else:
+                command.run(**pui)
+
+        except KeyboardInterrupt:
+            pass
 
         if stdout != __stdout__ and mode != 1:
             stdout.__close__()
@@ -452,9 +457,9 @@ def lambdaWithKWArgsSetup(lambdaFunc: Callable):
 
     return runLambdaWithKWArgs
 
-def lambdaWithArgsSetup(lambdaFunc: Callable):
+def lambdaWithArgsSetup(lambdaFunc: Callable, argConversion: type = str):
     def runLambdaWithArgs(**kwargs):
-        lambdaFunc(kwargs['args'][0])
+        lambdaFunc(argConversion(kwargs['args'][0]))
 
     return runLambdaWithArgs
 
@@ -1309,7 +1314,7 @@ def visDir(**kwargs) -> None:
     print(generateDirTree(Path(kwargs['args'][0]).resolve(), '/' if len(kwargs['args']) < 2 else kwargs["args"][1]))
 
 def serve(**kwargs) -> None:
-    if not needsArgsSetup("serve", 1, "=")(**kwargs):
+    if not needsArgsSetup("httpd", 1, "=")(**kwargs):
         return
 
     kwargs = defaultArgs({"-port": "8000"}, **kwargs)
@@ -1320,6 +1325,31 @@ def serve(**kwargs) -> None:
 
     except KeyboardInterrupt:
         print(f"Stopped Server")
+
+    os.chdir(curdir)
+
+def serveHttps(**kwargs) -> None:
+    if not needsArgsSetup("serve", 1, "=")(**kwargs):
+        return
+
+    kwargs = defaultArgs({"-port": 443}, **kwargs)
+    if isinstance(kwargs['-port'], str):
+        kwargs['-port'] = int(kwargs['-port'])
+
+    kwargs = booleanArgs(["-global"], **kwargs)
+
+    import commandUtils.https.server as https
+    import commandUtils.https.certgen as certGen
+
+    certGen.generate_self_signed_cert()
+    os.chdir(Path(kwargs["args"][0]).resolve())
+    print(f"Starting https server on port {kwargs['-port']} at path '{Path.cwd()}'")
+    try:
+        https.runHttpsServer(Path.home().joinpath("Appdata/Local/Temp/cert.pem"), Path.home().joinpath("Appdata/Local/Temp/key.pem"), kwargs["-port"], kwargs["-global"])
+
+    except KeyboardInterrupt:
+        print("Stopped Server")
+
     os.chdir(curdir)
 
 def diffy(**kwargs) -> None:
@@ -1386,7 +1416,7 @@ def initCommands() -> None:
     commands.append(Command(["cmd"], cmdCommand, {"name": "system-cmd", "description": "Runs the given system command in command prompt.", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["config"], changeConfig, {"name": "configure", "description": "Changes the config file", "has-kwargs": True, "kwargs": {"-u / -update": "Updates all the items that use the config fields."}}))
 
-    commands.append(Command(['csh', 'shell', 'sh'], lambdaWithArgsSetup(runShellFile), {'name': 'shell', 'description': 'Runs a .csh file', 'has-kwargs': False}))
+    commands.append(Command(['csh', 'shell', 'sh'], lambdaWithArgsSetup(runShellFile, Path), {'name': 'shell', 'description': 'Runs a .csh file', 'has-kwargs': False}))
     commands.append(Command(["project", "projmanager", "manager", "proj", "pm"], ManageProj, {"name": "project-manager", "description": "Runs the Custom-Shell Project Manager CLI.", "has-kwargs": False}, 'base-split'))
 
     commands.append(Command(["bookmarks", "marks"], bookmark, {"name": "bookmarks", "description": "Manages bookmarks, allowing you to add, go to, and list your bookmarks.", "has-kwargs": True, "kwargs": {"-s": "When listing bookmarks, this is used for the separating characters between bookmarks", "--color": "When listing bookmarks, this is used to style the bookmarks."}}))
@@ -1398,7 +1428,8 @@ def initCommands() -> None:
     commands.append(Command(["exec", "execute", "com", "command"], execCommand, {"name": "execute", "description": "Executes the command that you give it", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["pathviz", 'gendirtree'], visDir, {"name": "visualize-path", "description": "Displays a tree of a directory.", "has-kwargs": False}))
 
-    commands.append(Command(["serve", "httprun"], serve, {"name": "serve-http", "description": "Creates an http server at a given path and a port", "has-kwargs": False}))
+    commands.append(Command(["httpd", "httprun"], serve, {"name": "serve-http", "description": "Creates an http server at a given path and a port", "has-kwargs": True, 'kwargs': {"--port": "Port to serve on (default 8000)"}}))
+    commands.append(Command(["serve", "httpsd"], serveHttps, {"name": "serve-https", "description": "Creates an https server at a given path and a port", "has-kwargs": True, 'kwargs': {"--port": "Port to serve on (default is 443)", "--global": "makes the server serve to the entire network"}}))
     commands.append(Command(["diffy", "diff", "gendiff"], diffy, {"name": "diffy", "description": "shows a diff between 2 files", "has-kwargs": False}))
     commands.append(helpCommand)
 
