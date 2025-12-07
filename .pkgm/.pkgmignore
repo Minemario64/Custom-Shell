@@ -1,0 +1,9 @@
+cshLangEx
+SSHTST
+.vscode
+README.md
+.gitattributes
+example.csh
+TODO.txt
+tst.py
+__pycache__
