@@ -1,7 +1,6 @@
 import platform
 import cpuinfo
 import psutil
-import wmi
 from functools import cache
 import socket as ip
 import time
@@ -35,11 +34,10 @@ def formatSecs(seconds: int) -> str:
 @cache
 def _SysStats() -> dict[str, str | int | dict[str, str | int]]:
     disk = psutil.disk_usage('/')
-    gpu = wmi.WMI().Win32_VideoController()[0]
     mem = psutil.virtual_memory()
     SYSTEM_STATISTICS = {"osv": platform.release(), "winv": platform.version(), "hostname": ip.gethostname(), "cpu": {"name": cpuinfo.get_cpu_info()['brand_raw'], "cores": psutil.cpu_count(), "frequency": numAsFrequencyToStr((psutil.cpu_freq().current * 1_000) * 1_000)},
                         "memory": {"total": numAsBytesToStr(mem.total), "used": numAsBytesToStr(mem.used), "free": numAsBytesToStr(mem.free)},
-                        "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}, "gpu": gpu.Name}
+                        "disk": {"total": numAsBytesToStr(disk.total), "used": numAsBytesToStr(disk.used), "free": numAsBytesToStr(disk.free)}}
     return SYSTEM_STATISTICS
 
 def SystemStats() -> dict[str, str | int | dict[str, str | int]]:
@@ -70,13 +68,10 @@ if __name__ == "__main__":
 
 else:
     import threading
-    import pythoncom
 
     def runSysStats() -> None:
         global HAS_CACHED
-        pythoncom.CoInitialize()
         _SysStats()
-        pythoncom.CoUninitialize()
         HAS_CACHED = True
 
     CACHE_THREAD = threading.Thread(target=runSysStats, daemon=True)

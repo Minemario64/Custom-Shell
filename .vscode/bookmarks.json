@@ -14,32 +14,32 @@
 					"label": "Mutable Globals"
 				},
 				{
-					"line": 358,
+					"line": 356,
 					"column": 0,
 					"label": "Command Manager"
 				},
 				{
-					"line": 586,
+					"line": 584,
 					"column": 0,
 					"label": "Plugin Classes"
 				},
 				{
-					"line": 621,
+					"line": 619,
 					"column": 0,
 					"label": "Command Help Funcs"
 				},
 				{
-					"line": 735,
+					"line": 733,
 					"column": 0,
 					"label": "Plugin Funcs"
 				},
 				{
-					"line": 811,
+					"line": 809,
 					"column": 0,
 					"label": "Command Implementations"
 				},
 				{
-					"line": 1204,
+					"line": 1201,
 					"column": 0,
 					"label": "Project Manager Func"
 				}
@@ -54,7 +54,7 @@
 					"label": "Version And Imports"
 				},
 				{
-					"line": 61,
+					"line": 54,
 					"column": 0,
 					"label": "Globals"
 				}

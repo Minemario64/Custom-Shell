@@ -153,7 +153,7 @@ jsonPath = Path.home().joinpath(".csconfig")
 os.chdir(curdir)
 
 configExport = {"~:Home": False, "confirm-override": True, "code-editor": "", "Auto-Highlighting": True, "needpypath": False, "pycommand": "python", "pypath": "", "addondir": "", "vars": [], "aliases": {"la": "ls -a"}, "bookmarks": {}}
-configTypes = {"~:Home": "bool", "confirm:override": "bool", "code-editor": "program-path", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
+configTypes = {"~:Home": "bool", "confirm:override": "bool", "code-editor": "str/program-path", "Auto-Highlighting": "bool", "needpypath": "bool", "pycommand": "str", "pypath": "dirpath/", "addondir": "dirpath", "vars": "managed", "aliases": "managed", "bookmarks": "managed"}
 configTypeUsr = {"bool": "Boolean", "": "Nothing", "dirpath": "Directory", "str": "String", "program-path": "Program Path"}
 
 def updateConfig() -> None:
@@ -191,9 +191,7 @@ else:
 envVars = {
     "FILEDIR": PathVar(str(pyPath)),
     "USER": StrVar(Path.home().name),
-    "ROOT": PathVar(str(Path.home().parent.parent)),
-    "APPDATA": PathVar(str(Path.home().joinpath("AppData/Roaming"))),
-    "LOCALAPPDATA": PathVar(str(Path.home().joinpath("AppData/Local"))),
+    "ROOT": PathVar("/"),
     "PYDIR": PathVar(str(Path(importFromJSON(jsonPath)["pypath"]))) if importFromJSON(jsonPath)["needpypath"] else StrVar(''),
     "V": StrVar(Version("-"))
 }
@@ -572,7 +570,7 @@ def SysStats(**kwargs) -> None:
     kwargs = defaultArgs({"-asciiversion": stats["osv"], "-asciiart": "windows"}, **kwargs)
 
     displayStats: dict[str, Any] = {"Windows Version": stats['osv'], "Kernel Build": stats['winv'], "Uptime": stats['uptime'], "Custom-Shell Version": Version("-"),
-                    "CPU": f"{stats['cpu']['name']} @ {stats['cpu']['frequency']}", "GPU": stats['gpu'],
+                    "CPU": f"{stats['cpu']['name']} @ {stats['cpu']['frequency']}",
                     "Memory": f"{stats['memory']['used']} / {stats['memory']['total']}", "Disk": f"{stats['disk']['used']} / {stats['disk']['total']}"}
 
     tst = f"""
@@ -592,7 +590,7 @@ def showStartingPrints(startup : bool = False, **kwargs) -> None:
         kwargs = booleanArgs(["r", "-reset"], **kwargs)
         if kwargs["r"] == True or kwargs["-reset"] == True:
             startup = True
-    os.system("powershell clear")
+    os.system("clear")
     if startup:
         cli.print(f"  Welcome to the Custom Shell\nBy: [green][bold]Minemario64[/bold][/green]   Ver: [bold][red]{Version(" ")}[/red][/bold]")
         cli.print("\nType [bold][yellow]help all[/bold][/yellow] to find all the commands.")
@@ -1004,7 +1002,6 @@ def execCommand(**kwargs) -> None:
 def explorer(**kwargs) -> None:
     print("Not Implemented on this OS.")
     return
-    os.system(f"powershell ii{f' {kwargs['args']}' if not kwargs['args'] is None else ''}")
 
 def ManageProj(**kwargs) -> None:
 
@@ -1379,7 +1376,7 @@ def initCommands() -> None:
     commands.append(Command(["cat", "read", "printf"], printFile, {"name": "read-file", "description": "Prints the contents of a file.", "has-kwargs": False}))
 
     commands.append(Command(["clear", "cls"], showStartingPrints, {"name": "clear", "description": "Clears the terminal.", "has-kwargs": True, "kwargs": {"-r": "Loads the starting text after clearing the screen."}}))
-    commands.append(Command(["list", "ls"], listdir, {"name": "list", "description": "Lists all files in the current directory.", "has-kwargs": True, "kwargs": {"-ps": "Runs the powershell version of ls instead of the shell's version", "-t": "Filter to both files and folders 'all', only files 'files', or only folders 'folders'", "--folder-color": "Styles the color of the names of the folders", "--file-color": "Styles the color of the names of the files", "-a / --all": "Lists all files even if they are hidden", "-nq / --noquote": "Doesn't add quotes to directory names if they have spaces"}}))
+    commands.append(Command(["list", "ls"], listdir, {"name": "list", "description": "Lists all files in the current directory.", "has-kwargs": True, "kwargs": {"-s": "Runs the system's version of ls instead of the shell's version", "-t": "Filter to both files and folders 'all', only files 'files', or only folders 'folders'", "--folder-color": "Styles the color of the names of the folders", "--file-color": "Styles the color of the names of the files", "-a / --all": "Lists all files even if they are hidden", "-nq / --noquote": "Doesn't add quotes to directory names if they have spaces"}}))
 
     commands.append(Command(["makefile", "mkf", "touch"], makeFile, {"name": "touch", "description": "Makes files.", "has-kwargs": False}))
     commands.append(Command(["makedir", "mkdir"], makeDir, {"name": "makedir", "description": "Makes directories.", "has-kwargs": False}))

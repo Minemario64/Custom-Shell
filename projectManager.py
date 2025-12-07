@@ -7,15 +7,8 @@ def PMVer(sep: str) -> str:
 
 from pathlib import Path
 from json import load, dumps, dump
-import win32file
-import win32con
 import os
 from utils import *
-
-def hidePath(path: Path) -> None:
-   if path.exists():
-       flags = win32file.GetFileAttributes(str(path))
-       win32file.SetFileAttributes(str(path), win32con.FILE_ATTRIBUTE_HIDDEN | flags)
 
 home = Path.home()
 globalCommandsPath = home.joinpath(".codeCommands/")
@@ -63,13 +56,13 @@ class Language:
         templatePath = self.templatesPath.joinpath(name)
         if templatePath.exists():
             if overwrite:
-                os.system(f'powershell Remove-Item -Path "{templatePath}" -Recurse -Force')
+                os.system(f'rm -rf "{templatePath}"')
 
             else:
                 return False
 
         templatePath.mkdir()
-        os.system(f'powershell Copy-Item -Path "{directory}\\*.*" -Destination "{templatePath}" -Recurse')
+        os.system(f'cp -R "{directory}" "{templatePath}"')
         return True
 
     def makeProject(self, projectPath: Path, templateName: str = 'default') -> None:
@@ -82,7 +75,7 @@ class Language:
         if not self.templatesPath.joinpath(templateName).exists():
             raise ValueError("Cannot make a project with a template that doesn't exist")
 
-        os.system(f'powershell Copy-Item -Path "{self.templatesPath.joinpath(templateName)}" -Destination "{projectPath}" -Recurse')
+        os.system(f'cp -R "{self.templatesPath.joinpath(templateName)}" "{projectPath}"')
 
         with open(f"{projectPath.absolute().resolve()}:language", "x", encoding="utf-8") as stream:
             stream.write(f"{PMVer("-")}\nLanguage: {self.name}")
@@ -112,16 +105,14 @@ def runCommand(command: str, language: Language, args: list[str]) -> bool | None
         return False
 
     obj = objs[indexIntoLayeredList(names, command)]
-    os.system(f"powershell {LANG_LOOKUP[obj[1]["language"]]}{language.commandsPath.joinpath(obj[0]).resolve()} {" ".join(args)}")
+    os.system(f"{LANG_LOOKUP[obj[1]["language"]]}{language.commandsPath.joinpath(obj[0]).resolve()} {" ".join(args)}")
 
 
 if not globalCommandsPath.exists():
     globalCommandsPath.mkdir()
-    hidePath(globalCommandsPath)
 
 if not globalTemplatesPath.exists():
     globalTemplatesPath.mkdir()
-    hidePath(globalTemplatesPath)
 
 defaultConfig = {"languages": {}, "command-languages": {}}
 
