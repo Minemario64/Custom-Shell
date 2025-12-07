@@ -79,7 +79,7 @@ def VarsContains(key: str, jsonDict: dict[str, Any]) -> tuple[bool, int | None]:
 
 def is_hidden(path: Path) -> bool:
     try:
-        return bool(os.stat(path).st_file_attributes & 0x2)
+        return path.name.startswith('.')
 
     except FileNotFoundError:
         return False
@@ -94,7 +94,7 @@ class ConsoleStdout(basicConsoleStdout):
         self.console.print(data, end="")
 
     def clear(self):
-        os.system("powershell clear")
+        os.system("clear")
 
     def flush(self):
         sys.stdout.flush()
@@ -654,8 +654,8 @@ def webcutWConfig(**kwargs) -> None:
 
 def listdir(**kwargs) -> None:
     try:
-        kwargs["ps"]
-        os.system("powershell ls")
+        kwargs["s"]
+        os.system("ls")
         return
 
     except KeyError:
@@ -738,14 +738,14 @@ def openVSCode(**kwargs) -> None:
     if not needsArgsSetup("code", 1, "=")(**kwargs):
         return None
 
-    os.system(f"cmd /c start {importFromJSON(jsonPath)['code-editor'] if importFromJSON(jsonPath)['code-editor'] != "" else "code"} {kwargs['args'][0]}")
+    os.system(f"{importFromJSON(jsonPath)['code-editor'] if importFromJSON(jsonPath)['code-editor'] != "" else "code"} {kwargs['args'][0]}")
 
 def openWebsite(**kwargs) -> None:
     if not needsArgsSetup("website", 1)(**kwargs):
         return None
 
     for website in kwargs["args"]:
-        os.system(f'start http://{website}')
+        os.system(f'xdg-open https://{website}')
 
 def wait(**kwargs) -> None:
     if not needsArgsSetup("wait", 1, "="):
@@ -764,7 +764,8 @@ def openNotepad(**kwargs) -> None:
     if not needsArgsSetup("notepad", 1, "<=")(**kwargs):
         return None
 
-    os.system(f'notepad{f' {kwargs["args"][0]}' if kwargs["args"] != None else ""}')
+    print("No Notepad...")
+    return
 
 def changeDir(**kwargs) -> None:
     global curdir
@@ -794,7 +795,7 @@ def executeFile(**kwargs) -> None:
         cli.print("The command execute needs an argument.")
         return None
 
-    os.system(f'powershell ./{kwargs["args"]}')
+    os.system(f'./{kwargs["args"]}')
 
 def runPyFile(**kwargs) -> None:
 
@@ -819,7 +820,7 @@ def runHTML(**kwargs) -> None:
         return None
 
     for file in kwargs["args"]:
-        os.system(f'start {file}')
+        os.system(f'xdg-open {file}')
 
 def moveFile(**kwargs) -> None:
     if not needsArgsSetup("move", 2)(**kwargs):
@@ -867,10 +868,10 @@ def removeContent(**kwargs) -> None:
 
     if kwargs["rf"]:
         for folder in kwargs['args']:
-            os.system(f'powershell Remove-Item -Path "{folder}" -Recurse -Force')
+            os.system(f'rm -rf "{folder}"')
     else:
         for file in kwargs['args']:
-            os.system(f'powershell Remove-Item -Path "{file}" -Force {f'-Stream "{kwargs["s"]}"' if "s" in kwargs.keys() else ""}')
+            os.system(f'rm -f "{file}"')
 
 def changeConfig(**kwargs) -> None:
     kwargs = booleanArgs(["u", "-update", "f", "-file"], **kwargs)
@@ -997,18 +998,12 @@ def showHelp(commands : list[Command], prefix: str = '', **kwargs) -> None:
 def sysCommand(**kwargs) -> None:
     os.system(kwargs["args"])
 
-def psCommand(**kwargs) -> None:
-    kwargs["args"] = f"powershell {kwargs["args"]}"
-    sysCommand(**kwargs)
-
-def cmdCommand(**kwargs) -> None:
-    kwargs["args"] = f"cmd /c {kwargs["args"]}"
-    sysCommand(**kwargs)
-
 def execCommand(**kwargs) -> None:
     comm.run(kwargs['args'].strip())
 
 def explorer(**kwargs) -> None:
+    print("Not Implemented on this OS.")
+    return
     os.system(f"powershell ii{f' {kwargs['args']}' if not kwargs['args'] is None else ''}")
 
 def ManageProj(**kwargs) -> None:
@@ -1411,9 +1406,6 @@ def initCommands() -> None:
     commands.append(Command(["version", "ver"], lambda: print(f"[bold][red]{Version(" ")}[/bold][/red]"), {"name": "version", "description": "Prints the current version of the shell.", "has-kwargs": False}))
 
     commands.append(Command(["system", "sys"], sysCommand, {"name":"system", "description": "Runs the given system command.", "has-kwargs": False}, "base-split"))
-    commands.append(Command(["powershell", "ps"], psCommand, {"name": "system-powershell", "description": "Runs the given system command in powershell.", "has-kwargs": False}, 'base-split'))
-
-    commands.append(Command(["cmd"], cmdCommand, {"name": "system-cmd", "description": "Runs the given system command in command prompt.", "has-kwargs": False}, 'base-split'))
     commands.append(Command(["config"], changeConfig, {"name": "configure", "description": "Changes the config file", "has-kwargs": True, "kwargs": {"-u / -update": "Updates all the items that use the config fields."}}))
 
     commands.append(Command(['csh', 'shell', 'sh'], lambdaWithArgsSetup(runShellFile, Path), {'name': 'shell', 'description': 'Runs a .csh file', 'has-kwargs': False}))

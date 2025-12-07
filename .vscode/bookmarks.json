@@ -1,6 +1,51 @@
 {
 	"files": [
 		{
+			"path": "commands.py",
+			"bookmarks": [
+				{
+					"line": 0,
+					"column": 0,
+					"label": "Version And Constants"
+				},
+				{
+					"line": 190,
+					"column": 0,
+					"label": "Mutable Globals"
+				},
+				{
+					"line": 358,
+					"column": 0,
+					"label": "Command Manager"
+				},
+				{
+					"line": 586,
+					"column": 0,
+					"label": "Plugin Classes"
+				},
+				{
+					"line": 621,
+					"column": 0,
+					"label": "Command Help Funcs"
+				},
+				{
+					"line": 735,
+					"column": 0,
+					"label": "Plugin Funcs"
+				},
+				{
+					"line": 811,
+					"column": 0,
+					"label": "Command Implementations"
+				},
+				{
+					"line": 1204,
+					"column": 0,
+					"label": "Project Manager Func"
+				}
+			]
+		},
+		{
 			"path": "projectManager.py",
 			"bookmarks": [
 				{
@@ -9,49 +54,9 @@
 					"label": "Version And Imports"
 				},
 				{
-					"line": 19,
+					"line": 61,
 					"column": 0,
 					"label": "Globals"
-				},
-				{
-					"line": 117,
-					"column": 0,
-					"label": "Setup"
-				}
-			]
-		},
-		{
-			"path": "commands.py",
-			"bookmarks": [
-				{
-					"line": 0,
-					"column": 0,
-					"label": "Version and Constants"
-				},
-				{
-					"line": 147,
-					"column": 0,
-					"label": "Mutable Vars"
-				},
-				{
-					"line": 232,
-					"column": 0,
-					"label": "Command Manager"
-				},
-				{
-					"line": 451,
-					"column": 0,
-					"label": "Helper Funcs"
-				},
-				{
-					"line": 564,
-					"column": 0,
-					"label": "Command Func Implementaions"
-				},
-				{
-					"line": 1364,
-					"column": 0,
-					"label": "Commands"
 				}
 			]
 		}
