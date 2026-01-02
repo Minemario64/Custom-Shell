@@ -1,4 +1,4 @@
-ver = [2, 0, 0, "beta"]
+ver = [2, 0, 0, "alpha"]
 
 version = (".".join([str(num) for num in ver[0:3]]), ver[3])
 def Version(sep: str) -> str:
@@ -269,13 +269,13 @@ class CommandManager:
             if isinstance(item, list):
                 for i, arg in enumerate(item):
                     for name, val in self.vars.items():
-                                if arg == name:
-                                    item[i] = arg.replace(name, str(val))
-                                    arg = item[i]
+                        if arg == name:
+                            item[i] = arg.replace(name, str(val))
+                            arg = item[i]
 
-                                elif arg == f"/{name}":
-                                    item[i] = arg.replace(f"/{name}", name)
-                                    arg = item[i]
+                        elif arg == f"/{name}":
+                            item[i] = arg.replace(f"/{name}", name)
+                            arg = item[i]
 
                 result[idx] = item
                 continue

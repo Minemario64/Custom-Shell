@@ -1,0 +1,9 @@
+{
+    "options": {
+        "csh-neofetch": {
+            "add": [
+                "asciiart/csh/"
+            ]
+        }
+    }
+}

@@ -13,8 +13,8 @@ def replaceV2(text: str) -> str:
         if text == name:
             text = text.replace(name, val)
 
-        elif text == f"/{name}":
-            text = text.replace(f"/{name}", name)
+        elif text == f"\\{name}":
+            text = text.replace(f"\\{name}", name)
 
     return text
 
@@ -34,7 +34,15 @@ it("Not replacing multi-replacements", """
     passed(result == "~ %APPDATA% %LOCALAPPDATA% %TEMP% %TMP%")
 """)
 it("Not replacing escaped replacements", """
-    result = replaceV2("/~")
+    result = replaceV2("\\~")
     passed(result == "~")
+""")
+it("replacement with extra paths", """
+    result = replaceV2("~/Documents")
+    passed(result == "C:/Users/Charl/Documents")
+""")
+it("replacement with extra spaced paths", """
+    result = replaceV2("'~/OneDrive - Fulton County Schools/Documents'")
+    passed(result == "C:/Users/Charl/OneDrive - Fulton County Schools/Documents")
 """)
 ''')

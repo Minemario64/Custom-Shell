@@ -1,8 +1,8 @@
 from rich import traceback ; traceback.install()
 from typing import Callable, NamedTuple, Iterator
 from rich.console import Console
-from utils import *
-from draw import *
+from .utils import *
+from .draw import *
 import re
 from shutil import get_terminal_size
 from enum import Enum

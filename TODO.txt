@@ -18,5 +18,5 @@ COMMANDS:
 FEATURES:
 ---------
 - Directory Based Plugins with more features
-- CSVim Integration
+- Replace V2 and put in utils
 - GUI Console C++ Version

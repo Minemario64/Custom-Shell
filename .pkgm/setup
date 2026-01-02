@@ -1,18 +1,3 @@
 py
-from pathlib import Path
-
-PATH: Path = Path("C:/mesc/")
-wrapperFilepath: Path = PATH.joinpath("csh.bat")
-
-batchContent: str = r'''
-@echo off
-%USERPROFILE%\Appdata\Local\Programs\pfsp\packages\Custom-Shell\py314\python.exe -u %USERPROFILE%\Appdata\Local\Programs\pfsp\packages\Custom-Shell\main.py %*
-'''.removeprefix("\n").removesuffix("\n")
-
-if not wrapperFilepath.exists():
-    wrapperFilepath.touch()
-
-with wrapperFilepath.open("w") as batchFile:
-    batchFile.write(batchContent)
-
-print(f"Created wrapper at {wrapperFilepath}")
+utils.launcher.ActivateLauncher(packageDir.joinpath("launcher.bat"), "csh")
+print("Setup")
