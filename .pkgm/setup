@@ -1,3 +1,2 @@
 py
 utils.launcher.ActivateLauncher(packageDir.joinpath("launcher.bat"), "csh")
-print("Setup")
