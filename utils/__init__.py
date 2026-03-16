@@ -35,6 +35,9 @@ def flatten(l : list) -> list:
     return newList
 
 def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : int = 0) -> int | str:
+    # Check again but I think this function is to get the index of the element as if the list was
+    # flat so, [[1, 2], [3, 4]] would return 2 if target was 3, because 2 would correlate
+    # to 3 in [3, 4].
     idx : int = 0 if start else idxStart
     for item in l:
         if (item == targetVal) and (type(item) == type(targetVal)):
@@ -51,6 +54,9 @@ def indexThroughLayeredList(l: list, targetVal, start : bool = True, idxStart : 
     return str(idx) if len(l) > 0 else str(idx + 1)
 
 def indexIntoLayeredList(l : list, targetVal, start : bool = True, idxStart : int = 0) -> int:
+    # Check again but I think this function is to get the index of the parent element in the first
+    # layer of the list, so [[1, 2], [3, 4]] would return 1 if target was 3, because 1 would correlate
+    # to [3, 4].
     idx : int = 0 if start else idxStart
     for item in l:
         if (item == targetVal) and (type(item) == type(targetVal)):
