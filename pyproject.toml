@@ -1,11 +1,9 @@
 [project]
 name = "custom-shell"
-version = "0.1.0"
+version = "2.0.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "psutil>=7.2.1",
-    "py-cpuinfo>=9.0.0",
-    "rich>=14.3.1",
+    "clicanvas>=0.2.1.3",
 ]

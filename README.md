@@ -1,2 +1,3 @@
 # Custom-Shell
- A custom shell for easy access to other utilities
+
+A custom, bash-like shell in python
