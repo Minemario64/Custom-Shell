@@ -2,7 +2,9 @@ from typing import Callable
 from pathlib import Path
 from io import BytesIO
 from lexer import *
-import sys, subprocess
+from utils import *
+from copy import deepcopy
+import sys, subprocess, os
 
 class Command:
     def __init__(self, names : list[str], func : Callable[..., None]):
@@ -60,7 +62,7 @@ class CommandStdoutBuf:
         self.__stdoutBuf = bytearray()
 
 class CommandExecuter:
-    def __init__(self, PATH: list[str], builtinCommands: list[Command], pathResolver: Callable[[str], Path]) -> None:
+    def __init__(self, PATH: list[str], builtinCommands: list[Command], pathResolver: Callable[[str], Path], vars: dict[str, str], specialVars: dict[str, str], aliases: dict[str, list[CommandToken]]) -> None:
         self.commands: dict[str, Command] = {name: cmd for cmd in builtinCommands for name in cmd.names}
         self.PATH = [Path(path) for path in PATH]
         self.lexer = Lexer()
@@ -68,6 +70,9 @@ class CommandExecuter:
         self.__stdinBuf: CommandStdinBuf | None = None
         self.__stdoutBuf: CommandStdoutBuf | None = None
         self.pathResolver = pathResolver
+        self.vars = vars
+        self.specialVars = specialVars
+        self.aliases = aliases
 
     def getStdin(self) -> CommandStdinBuf:
         return self.__stdinBuf or CommandStdinBuf(None)
@@ -87,12 +92,64 @@ class CommandExecuter:
 
         return commandBuilder
 
+    def _runSubprocess(self, tok: CommandToken, stdin: BytesIO | None, retStdout: bool = False) -> BytesIO | None:
+        exePath: str | Path | None = None
+        mode: int = 0
+        if Path(tok.exe).is_absolute() and Path(tok.exe).is_file():
+            exePath = tok.exe
+
+        else:
+            for directory in self.PATH:
+                if sys.platform == "linux" and os.access(path := (directory / tok.exe), os.X_OK):
+                    exePath = path
+                    break
+
+                candidates: list[Path] = [directory / name for name in [f"{tok.exe}{ext}" for ext in [".py", ".sh" if sys.platform == "linux" else ".bat", ".pyin"]]]
+
+        if exePath is None:
+            print(f"\x1b[91mCommand not found: {tok.exe}\x1b[0m")
+            return
+
+        capture_stdout = retStdout or (tok.stdout is not None)
+        proc = subprocess.run(
+            ([exePath] + tok.args),
+            input=stdin.getvalue() if stdin else None,
+            stdout=subprocess.PIPE if capture_stdout else None,
+            stderr=None,
+            cwd=os.getcwd()
+        )
+
+        if capture_stdout:
+            if retStdout:
+                return BytesIO(proc.stdout)
+
+            elif tok.stdout:
+                path = self.pathResolver(tok.stdout)
+                if not path.parent.exists():
+                    print(f"\x1b[91mPath '{path.parent.resolve()}' doesn't exist.\x1b[0m")
+                    return
+
+                if path.is_dir():
+                    print(f"\x1b[91mPath '{path.resolve()}' is a directory.\x1b[0m")
+                    return
+
+                if not path.exists():
+                    path.touch()
+
+                with path.open("wb") as file:
+                    file.write(proc.stdout)
+
+            else:
+                self.__stdoutBuf.write(proc.stdout) # type: ignore
+
     def _runCommand(self, tok: CommandToken, retStdout: bool = False) -> BytesIO | None:
         if isinstance(tok.stdin, CommandToken):
             stdin = self._runCommand(tok.stdin, True) or BytesIO()
 
         else:
             stdin = None
+
+        json = importFromJSON(self._replaceVars("%/bin/libs.pmh"))
 
         if tok.exe in self.commands:
             self.__stdinBuf = CommandStdinBuf(stdin)
@@ -117,42 +174,89 @@ class CommandExecuter:
             if retStdout:
                 return self.__stdoutBuf._flusher
 
+        elif tok.exe in json:
+            obj: dict[str, str] = json[tok.exe]
+            match obj.get("type"):
+                case "py/lib":
+                    if not obj.get("file") is None:
+                        filepath: Path = Path(self._replaceVars(obj['file']))
+                        getattr(loadModule(filepath), obj.get("func", "main"))(tok.args)
+
         else:
-            try:
-                proc = subprocess.Popen([tok.exe, *tok.args], stdin=None if stdin is None else subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = proc.communicate(stdin.getvalue() if stdin is not None else None)
-                if isinstance(tok.stdout, str):
-                    path = self.pathResolver(tok.stdout)
-                    if not path.parent.exists():
-                        print(f"\x1b[91mPath '{path.parent.resolve()}' doesn't exist.\x1b[0m")
-                        return None
+            return self._runSubprocess(tok, stdin, retStdout)
 
-                    if path.is_dir():
-                        print(f"\x1b[91mPath '{path.resolve()}' is a directory.\x1b[0m")
-                        return None
+    def _replaceVars(self, arg: str) -> str:
+        res: str = arg
+        mode: int = 0
+        esc: bool = False
+        L, R = 0, 0
+        offset: int = 0
+        for i, char in enumerate(arg):
+            if char in self.specialVars and mode == 0 and not esc:
+                res = f"{res[:i+offset]}{self.specialVars[char]}{res[i+1+offset:]}"
+                offset = len(res) - len(arg)
+                continue
 
-                    if not path.exists():
-                        path.touch()
+            match char:
+                case "\\":
+                    esc = True
+                    continue
 
-                    with path.open("wb") as file:
-                        file.write(stdout)
+                case "$":
+                    if not esc and mode == 0:
+                        mode = 1
+                        continue
 
-                print(stdout, stderr)
+                    elif esc:
+                        res = res[:i+offset-1] + res[i+offset:]
 
-                if stderr:
-                    sys.stderr.buffer.write(stderr)
-                    sys.stderr.flush()
+                case "{":
+                    if mode == 1:
+                        mode = 2
+                        L = i+1
 
-                if retStdout:
-                    return BytesIO(stdout)
+                case "}":
+                    if mode == 2:
+                        mode = 0
+                        R = i-1
+                        varName = arg[L:R+1]
+                        res = f"{res[:L-2+offset]}{self.vars.get(varName, '') or os.getenv(varName, '')}{res[R+2+offset:]}"
+                        offset = len(res) - len(arg)
 
-                if stdout:
-                    sys.stdout.buffer.write(stdout)
-                    sys.stdout.flush()
+            if esc:
+                esc = False
 
-            except FileNotFoundError:
-                print(f"\x1b[91mCommand '{tok.exe}' not found.\x1b[0m")
+            if mode == 1:
+                mode = 0
+
+        return res
+
+
+    def _replaceVarsRec(self, command: CommandToken) -> CommandToken:
+        command.args = [self._replaceVars(arg) for arg in command.args]
+        if isinstance(command.stdin, CommandToken):
+            command.stdin = self._replaceVarsRec(command.stdin)
+
+        return command
+
+    def _expandAliasRec(self, commands: list[CommandToken]) -> list[CommandToken]:
+        res: list[CommandToken] = []
+        for command in commands:
+            if command.exe in self.aliases:
+                coms: list[CommandToken] = deepcopy(self.aliases[command.exe])
+                if command.args:
+                    coms[-1].args.extend(command.args)
+
+                res.extend(self._expandAliasRec(coms))
+
+            else:
+                if isinstance(command.stdin, CommandToken):
+                    command.stdin = self._expandAliasRec([command.stdin])[0]
+
+                res.append(command)
+
+        return res
 
     def run(self, line: str) -> None:
-        for command in self.parser(self.lexer(line.strip())):
-            self._runCommand(command)
+        for command in self._expandAliasRec(self.parser(self.lexer(line.strip()))):
+            self._runCommand(self._replaceVarsRec(command))

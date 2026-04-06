@@ -8,6 +8,11 @@
 - show version in shell and --version arg support
 - Commands ran on startup from cli args
 - Git project and source (python venv) aware
+- Script executables
+- Built-in command to manage the config
+
+### NOW
+- Create builtin command to manage aliases
 
 ## Cool Addition Ideas
 

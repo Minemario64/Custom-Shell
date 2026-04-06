@@ -1,0 +1,17 @@
+{
+    "py": {
+        "type": "py/lib",
+        "file": "%/bin/pyl.py",
+        "func": "launcher"
+    },
+    "python": {
+        "type": "py/lib",
+        "file": "%/bin/pyl.py",
+        "func": "pyrun"
+    },
+    "python3": {
+        "type": "py/lib",
+        "file": "%/bin/pyl.py",
+        "func": "pyrun3"
+    }
+}
