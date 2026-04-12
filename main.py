@@ -48,7 +48,8 @@ mod = ModuleType("cshApi")
 mod.__dict__['__file__'] = __file__
 mod.__dict__['__package__'] = None
 mod.__dict__['__name__'] = "cshApi"
-mod.__dict__['com'] = com
+mod.__dict__['getStdout'] = com.getStdout
+mod.__dict__['getStdin'] = com.getStdin
 sys.modules["cshApi"] = mod
 
 #===================#

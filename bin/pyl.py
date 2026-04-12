@@ -1,8 +1,8 @@
-from cshApi import com
+from cshApi import getStdout
 
 def launcher(args: list[str]):
     print("Launchung pytan...")
-    stdout = com.getStdout()
+    stdout = getStdout()
     stdout.write("HeHe, secret message\n")
 
 def pyrun(args: list[str]):

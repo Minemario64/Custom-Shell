@@ -105,19 +105,58 @@ class CommandExecuter:
                     break
 
                 candidates: list[Path] = [directory / name for name in [f"{tok.exe}{ext}" for ext in [".py", ".sh" if sys.platform == "linux" else ".bat", ".pyin"]]]
+                for candidate in candidates:
+                    if candidate.is_file():
+                        exePath = candidate
+                        mode = 1
+                        break
 
         if exePath is None:
             print(f"\x1b[91mCommand not found: {tok.exe}\x1b[0m")
             return
 
         capture_stdout = retStdout or (tok.stdout is not None)
-        proc = subprocess.run(
-            ([exePath] + tok.args),
-            input=stdin.getvalue() if stdin else None,
-            stdout=subprocess.PIPE if capture_stdout else None,
-            stderr=None,
-            cwd=os.getcwd()
-        )
+        if mode == 1 and isinstance(exePath, Path):
+            match exePath.suffix:
+                case ".py" | ".pyw" | ".pyin":
+                    proc = subprocess.run(
+                        ["python3" if sys.platform != "win32" else "python"] + [exePath] + tok.args,
+                        input=stdin.getvalue() if stdin else None,
+                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
+                        stderr=None,
+                        cwd=os.getcwd()
+                    )
+
+                case ".sh":
+                    proc = subprocess.run(
+                        ["bash", exePath] + tok.args,
+                        input=stdin.getvalue() if stdin else None,
+                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
+                        stderr=None,
+                        cwd=os.getcwd()
+                    )
+
+                case ".bat":
+                    proc = subprocess.run(
+                        [exePath] + tok.args,
+                        input=stdin.getvalue() if stdin else None,
+                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
+                        stderr=None,
+                        cwd=os.getcwd(),
+                        shell=True
+                    )
+
+                case _:
+                    raise Exception(f"Unsupported file type: {exePath.suffix}")
+
+        else:
+            proc = subprocess.run(
+                ([exePath] + tok.args),
+                input=stdin.getvalue() if stdin else None,
+                stdout=subprocess.PIPE if capture_stdout else None,
+                stderr=None,
+                cwd=os.getcwd()
+            )
 
         if capture_stdout:
             if retStdout:

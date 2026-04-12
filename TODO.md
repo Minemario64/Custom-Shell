@@ -1,18 +1,12 @@
 # TODO
 
-- Variable replacement
 - More default commands
 - PATH default directory like /bin with more commands from past csh
-- Actually read .csh.conf (in user home)
-- .csh_history file (in user home)
 - show version in shell and --version arg support
 - Commands ran on startup from cli args
 - Git project and source (python venv) aware
 - Script executables
 - Built-in command to manage the config
-
-### NOW
-- Create builtin command to manage aliases
 
 ## Cool Addition Ideas
 
