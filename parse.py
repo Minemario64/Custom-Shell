@@ -6,13 +6,17 @@ from utils import *
 from copy import deepcopy
 import sys, subprocess, os
 
+class KillSwitch:
+    pass
+
 class Command:
     def __init__(self, names : list[str], func : Callable[..., None]):
         self.names : list[str] = names
         self.func = func
 
-    def run(self, *inputs, **kwinputs):
-        self.func(*inputs, **kwinputs)
+    def run(self, *inputs, **kwinputs) -> None | KillSwitch:
+        result = self.func(*inputs, **kwinputs)
+        return result if isinstance(result, KillSwitch) else None
 
     def __repr__(self) -> str:
         return f"<Command: {self.names[0]} calls {self.func} by using {", ".join(self.names)}>"
@@ -62,9 +66,9 @@ class CommandStdoutBuf:
         self.__stdoutBuf = bytearray()
 
 class CommandExecuter:
-    def __init__(self, PATH: list[str], builtinCommands: list[Command], pathResolver: Callable[[str], Path], vars: dict[str, str], specialVars: dict[str, str], aliases: dict[str, list[CommandToken]]) -> None:
-        self.commands: dict[str, Command] = {name: cmd for cmd in builtinCommands for name in cmd.names}
-        self.PATH = [Path(path) for path in PATH]
+    def __init__(self, PATH: list[str] | list[Path], builtinCommands: list[Command] | dict[str, Command], pathResolver: Callable[[str], Path], vars: dict[str, str], specialVars: dict[str, str], aliases: dict[str, list[CommandToken]]) -> None:
+        self.commands: dict[str, Command] = {name: cmd for cmd in builtinCommands for name in cmd.names} if isinstance(builtinCommands, list) else builtinCommands
+        self.PATH = [Path(path) if isinstance(path, str) else path for path in PATH]
         self.lexer = Lexer()
         self.parser = Parser()
         self.__stdinBuf: CommandStdinBuf | None = None
@@ -93,23 +97,39 @@ class CommandExecuter:
         return commandBuilder
 
     def _runSubprocess(self, tok: CommandToken, stdin: BytesIO | None, retStdout: bool = False) -> BytesIO | None:
+        EXTS: list[str] = [".py", ".sh" if sys.platform == "linux" else ".bat", ".pyin", ".pyw", ".csh"]
+        if os.name == "nt": EXTS.append(".exe")
+
         exePath: str | Path | None = None
         mode: int = 0
         if Path(tok.exe).is_absolute() and Path(tok.exe).is_file():
             exePath = tok.exe
 
-        else:
+        if exePath is None and (not self.pathResolver(tok.exe).exists()):
+            candidates = [self.pathResolver(tok.exe).parent / name for name in [f"{tok.exe}{ext}" for ext in EXTS]]
+            for candidate in candidates:
+                if candidate.is_file():
+                    exePath = candidate
+                    mode = 1
+                    break
+
+        if exePath is None:
             for directory in self.PATH:
                 if sys.platform == "linux" and os.access(path := (directory / tok.exe), os.X_OK):
                     exePath = path
                     break
 
-                candidates: list[Path] = [directory / name for name in [f"{tok.exe}{ext}" for ext in [".py", ".sh" if sys.platform == "linux" else ".bat", ".pyin"]]]
+                candidates: list[Path] = [directory / name for name in [f"{tok.exe}{ext}" for ext in EXTS]]
                 for candidate in candidates:
                     if candidate.is_file():
                         exePath = candidate
                         mode = 1
                         break
+
+                else:
+                    continue
+
+                break
 
         if exePath is None:
             print(f"\x1b[91mCommand not found: {tok.exe}\x1b[0m")
@@ -146,6 +166,19 @@ class CommandExecuter:
                         shell=True
                     )
 
+                case "":
+                    proc = subprocess.run(
+                        [exePath] + tok.args,
+                        input=stdin.getvalue() if stdin else None,
+                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
+                        stderr=None,
+                        cwd=os.getcwd()
+                    )
+
+                case ".csh":
+                    self._runCommand(CommandToken(exe='csh', args=[str(exePath.resolve())] + tok.args, stdin=tok.stdin, stdout=tok.stdout), retStdout)
+                    return
+
                 case _:
                     raise Exception(f"Unsupported file type: {exePath.suffix}")
 
@@ -181,9 +214,11 @@ class CommandExecuter:
             else:
                 self.__stdoutBuf.write(proc.stdout) # type: ignore
 
-    def _runCommand(self, tok: CommandToken, retStdout: bool = False) -> BytesIO | None:
+    def _runCommand(self, tok: CommandToken, retStdout: bool = False) -> BytesIO | None | KillSwitch:
         if isinstance(tok.stdin, CommandToken):
             stdin = self._runCommand(tok.stdin, True) or BytesIO()
+            if isinstance(stdin, KillSwitch):
+                return stdin
 
         else:
             stdin = None
@@ -191,9 +226,12 @@ class CommandExecuter:
         json = importFromJSON(self._replaceVars("%/bin/libs.pmh"))
 
         if tok.exe in self.commands:
-            self.__stdinBuf = CommandStdinBuf(stdin)
+            self.__stdinBuf = CommandStdinBuf(stdin) if not isinstance(stdin, KillSwitch) else None
+
             self.__stdoutBuf = CommandStdoutBuf(BytesIO() if retStdout or (tok.stdout is not None) else None)
-            self.commands[tok.exe].run(tok.args)
+            if isinstance((killRet := self.commands[tok.exe].run(tok.args)), KillSwitch):
+                return killRet
+
             if isinstance(tok.stdout, str):
                 path = self.pathResolver(tok.stdout)
                 if not path.parent.exists():

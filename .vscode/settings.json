@@ -7,9 +7,13 @@
         "gendirtree",
         "httprun",
         "mkproj",
+        "pastcwd",
         "pathviz",
         "projmanager",
         "pythoncom"
     ],
-    "bookmarks.saveBookmarksInProject": true
+    "bookmarks.saveBookmarksInProject": true,
+    "python.analysis.extraPaths": [
+        "./bin"
+    ]
 }

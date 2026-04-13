@@ -4,15 +4,15 @@ requires-python = ">=3.14"
 
 [[package]]
 name = "clicanvas"
-version = "0.2.1.3"
+version = "0.3.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "inputkit" },
     { name = "regex" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/29/222f51767871b9578440f60ada0985ab846c98ce8199f6e1d5f7844c3eff/clicanvas-0.2.1.3.tar.gz", hash = "sha256:379d2f3e4bd375702a6dfec419ea2db07a13e7c1a28141ee90fd076334a435a5", size = 8578, upload-time = "2026-03-22T00:37:34.622Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/ea/fba8fe19f847b190664bcd0e70fb7c83b23e6992dfe0459785670755bb29/clicanvas-0.3.0.1.tar.gz", hash = "sha256:3a63a6387793568ada14e718fc76934651982a5cb46dcb5adc52dd5f4b001b34", size = 10111, upload-time = "2026-04-05T20:39:05.678Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/7b/79d7bb6bfb473f27a7afa17dc669f3799e9d26ffdbdbd7da5b27893faacb/clicanvas-0.2.1.3-py3-none-any.whl", hash = "sha256:637fb1ccd0802e4a54a422974882231047dc79a54d8a7263ef85b05a8c4f7db3", size = 13451, upload-time = "2026-03-22T00:37:35.314Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/43/31137bddc1ce45993dd2963dc205cd2d33b26e2031b0a263b2652f05951e/clicanvas-0.3.0.1-py3-none-any.whl", hash = "sha256:99236d772c7c03a6999e60c69e8a7625ea81457f1a0710b346a9868aaffc52ac", size = 15597, upload-time = "2026-04-05T20:39:07.156Z" },
 ]
 
 [[package]]
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "clicanvas", specifier = ">=0.2.1.3" }]
+requires-dist = [{ name = "clicanvas", specifier = ">=0.3.0.1" }]
 
 [[package]]
 name = "inputkit"
