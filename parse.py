@@ -1,10 +1,10 @@
 from typing import Callable
-from pathlib import Path
 from io import BytesIO
 from lexer import *
-from utils import *
+from utils import importFromJSON, loadModule
 from copy import deepcopy
 import sys, subprocess, os
+from lib.path import Path
 
 class KillSwitch:
     pass
@@ -135,49 +135,34 @@ class CommandExecuter:
             print(f"\x1b[91mCommand not found: {tok.exe}\x1b[0m")
             return
 
+        makeProc: Callable[[list[str]], subprocess.CompletedProcess] = lambda args: subprocess.run(args,
+            input=stdin.getvalue() if stdin else None,
+            stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
+            stderr=None,
+            cwd=os.getcwd()
+        )
+
         capture_stdout = retStdout or (tok.stdout is not None)
         if mode == 1 and isinstance(exePath, Path):
             match exePath.suffix:
                 case ".py" | ".pyw" | ".pyin":
-                    proc = subprocess.run(
-                        ["python3" if sys.platform != "win32" else "python"] + [exePath] + tok.args,
-                        input=stdin.getvalue() if stdin else None,
-                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
-                        stderr=None,
-                        cwd=os.getcwd()
-                    )
+                    proc = makeProc(["python3" if sys.platform != "win32" else "python", str(exePath.resolve())] + tok.args)
 
                 case ".sh":
-                    proc = subprocess.run(
-                        ["bash", exePath] + tok.args,
-                        input=stdin.getvalue() if stdin else None,
-                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
-                        stderr=None,
-                        cwd=os.getcwd()
-                    )
+                    proc = makeProc(["bash", str(exePath.resolve())] + tok.args)
 
                 case ".bat":
-                    proc = subprocess.run(
-                        [exePath] + tok.args,
-                        input=stdin.getvalue() if stdin else None,
-                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
-                        stderr=None,
-                        cwd=os.getcwd(),
-                        shell=True
-                    )
+                    proc = makeProc(["cmd", "/c", str(exePath.resolve())] + tok.args)
 
                 case "":
-                    proc = subprocess.run(
-                        [exePath] + tok.args,
-                        input=stdin.getvalue() if stdin else None,
-                        stdout=subprocess.PIPE if retStdout or (tok.stdout is not None) else None,
-                        stderr=None,
-                        cwd=os.getcwd()
-                    )
+                    proc = makeProc([str(exePath.resolve())] + tok.args)
 
                 case ".csh":
                     self._runCommand(CommandToken(exe='csh', args=[str(exePath.resolve())] + tok.args, stdin=tok.stdin, stdout=tok.stdout), retStdout)
                     return
+
+                case ".exe":
+                    proc = makeProc([str(exePath.resolve())] + tok.args)
 
                 case _:
                     raise Exception(f"Unsupported file type: {exePath.suffix}")
@@ -310,7 +295,16 @@ class CommandExecuter:
 
 
     def _replaceVarsRec(self, command: CommandToken) -> CommandToken:
-        command.args = [self._replaceVars(arg) for arg in command.args]
+        new_args: list[str] = []
+        for arg in command.args:
+            replaced = self._replaceVars(arg)
+            if ("${*}" in arg) and (" " in replaced):
+                new_args.extend(replaced.split(" "))
+
+            else:
+                new_args.append(replaced)
+
+        command.args = new_args
         if isinstance(command.stdin, CommandToken):
             command.stdin = self._replaceVarsRec(command.stdin)
 

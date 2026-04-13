@@ -5,6 +5,7 @@
 - Git project and source (python venv) aware
 - Script executables
 - Built-in command to manage the config
+- Actually make httpd instead of the .csh hack
 
 ## Cool Addition Ideas
 
@@ -19,9 +20,6 @@
 ### Csh 2.0B Commands
 - bookmarks
 - ~ neofetch
-- ! pathviz
-- httpd
 - ~ serve (httpsd)
 
-**Note: ! [command] - taking the code from past implementation and transform to work with new system instead of recreating it**
 **Note: ~ [command] - taking some code from past implementation, but transform it more than just making it work with the new system**

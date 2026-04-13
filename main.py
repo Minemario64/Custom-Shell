@@ -12,13 +12,12 @@ def version() -> str: return f"{".".join([str(num) for num in ver[:3]])}{"".join
 #===============#
 from clicanvas.input.readline import input, maxHistory, loadHistory, saveHistory
 from parse import CommandExecuter, Command, KillSwitch
-from lib import *
-from utils import *
-from typing import Any
+from utils import importFromJSON, exportToJSON
+from typing import Any, Generator
 from types import ModuleType
-from pathlib import Path
 import os, socket as ip, sys
-
+from lib import *
+from lib.path import Path
 
 #===============#
 #   CONSTANTS   #
@@ -28,13 +27,6 @@ HIST_PATH: Path = Path.home().joinpath(".csh_history")
 
 def resolvePath(path: Path, extended: str) -> Path:
     return (path.joinpath(extended).resolve()) if not extended.startswith("/") else Path(extended).resolve()
-
-def shortenPath(path: Path) -> str:
-    try:
-        return "~" if not (relative := path.relative_to(Path.home())) else f"~/{relative}"
-
-    except ValueError:
-        return str(path)
 
 
 #===============#
@@ -90,29 +82,55 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         elif args[0] == "\\-":
             args[0] = "-"
 
-        if os.name == "posix":
-            pastcwd = curdir
-            curdir = resolvePath(curdir, args[0])
-            os.chdir(curdir)
-            if not curdir.is_dir():
-                print(f"\x1b[91mPath '{curdir}' is a file or doesn't exist")
-                curdir = pastcwd
-                return
+        pastcwd = curdir
+        curdir = curdir.joinpath(args[0]).absolute()
+        if not curdir.is_dir():
+            print(f"\x1b[91mPath '{curdir}' is a file or doesn't exist")
+            curdir = pastcwd
+            return
 
-        else:
-            curdir = (curdir.joinpath(args[0]).resolve())
+        os.chdir(curdir)
 
     @commandExecuter.buildCommand(["ls", "listdir"])
     def listdir(args: list[str]) -> None:
         flags = getFlags({"all": ["-a", "--all"]}, args)
-        (args.pop(args.index("-a"))) if flags["all"] else None
 
         target: Path = curdir if not args else resolvePath(curdir, args[0])
         if not target.is_dir():
             print(f"\x1b[91mPath '{target}' is either a file or doesn't exist.\x1b[0m")
             return
 
-        paths = [path for path in target.iterdir() if flags["all"] or (not flags['all'] and (not path.name.startswith(".")))]
+        def is_hidden(path: Path) -> bool:
+            if path.name.startswith("."):
+                return True
+
+            if os.name == "nt":
+                import ctypes
+                FILE_ATTRIBUTE_HIDDEN = 0x02
+                attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+                return attrs != -1 and (attrs & FILE_ATTRIBUTE_HIDDEN)
+
+        def dirContents(path: Path) -> Generator[Path, None, None]:
+            for p in path.iterdir():
+                if p.is_dir():
+                    try:
+                        [file for file in p.iterdir()]
+
+                    except PermissionError:
+                        continue
+
+                if p.is_file() and os.name == "nt":
+                    if path == Path.home():
+                        if p.name.lower() in ["ntuser.dat", "ntuser.man"]:
+                            yield p
+                            continue
+
+                        elif p.name.lower().startswith("ntuser"):
+                            continue
+
+                yield p
+
+        paths = [path for path in dirContents(target) if (flags["all"] or (not flags['all'] and (not is_hidden(path))))]
 
         print("  ".join([f"{"\x1b[94m" if path.is_dir() else ""}{path.name}{"\x1b[0m" if path.is_dir() else ""}" for path in paths]))
 
@@ -382,6 +400,9 @@ def shellFile(args: list[str]):
     for i, arg in enumerate(args):
         comm.vars[str(i)] = arg
 
+    comm.vars["#"] = str(len(args))
+    comm.vars["*"] = " ".join(args[1:])
+
     state: dict[str, Any] = {"global": False, "pcwd": pastcwd, "curcwd": curdir}
 
     text: str = path.read_text()
@@ -410,19 +431,13 @@ def shellFile(args: list[str]):
 #   MAIN LOGIC   #
 #================#
 if __name__ == "__main__":
-    flags = getFlags({"version": ["-v", "--version"]}, (args := sys.argv[1:]))
+    flagsDict = {
+        "version": ["-v", "--version"],
+    }
+    lFlags = getListArgs({"command": ['-c', '--command']}, [alias for flag in flagsDict.values() for alias in flag], (args := sys.argv[1:]))
+    flags = getFlags(flagsDict, args)
     if flags["version"]:
         print(version)
-        exit()
-
-    if "-c" in args:
-        cIndex = args.index("-c")
-        if cIndex + 1 >= len(args):
-            print(f"\x1b[91mNo command provided for '-c' flag.\x1b[0m")
-            exit()
-
-        command = " ".join(args[cIndex + 1:])
-        com.run(command)
         exit()
 
     integrateBuiltinCommands(com)
@@ -440,14 +455,13 @@ if __name__ == "__main__":
                 "aliases": {
                     "la": "ls -a",
                 },
-                "vars": {
-                    "CODE": "~/code"
-                }
+                "vars": {}
             },
             CONFIG_PATH
         )
 
     json = importFromJSON(CONFIG_PATH)
+    maxHistory(json.get("maxHistory", 50))
     if not ((pathObj := json.get("PATH")) is None):
         com.PATH = [Path(com._replaceVars(path)) for path in pathObj.get("paths", [])] + ([Path(path) for path in PATH] if pathObj.get("includeSystemPath", True) else [])
         com.vars['PATH'] = "|".join([str(path) for path in com.PATH])
@@ -461,10 +475,15 @@ if __name__ == "__main__":
     if not HIST_PATH.exists():
         HIST_PATH.touch()
 
+    if lFlags["command"]:
+        command = " ".join(lFlags["command"])
+        com.run(command)
+        exit()
+
     loadHistory(HIST_PATH)
 
     while True:
-        command: str = input(f"\x1b[94m{USERNAME}@{HOSTNAME}\x1b[0m:\x1b[38;5;40m{shortenPath(curdir)}\x1b[95m$\x1b[0m ")
+        command: str = input(f"\x1b[94m{USERNAME}@{HOSTNAME}\x1b[0m:\x1b[38;5;40m{curdir.shorten(com.specialVars)}\x1b[95m$\x1b[0m ")
         try:
             com.run(command)
 
