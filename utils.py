@@ -1,5 +1,5 @@
 from pathlib import Path
-import importlib, importlib.util
+import importlib, importlib.util, sys
 
 def importFromJSON(filename: str | Path) -> dict:
     from json import load
@@ -29,3 +29,13 @@ def loadModule(path: Path):
     module = importlib.util.module_from_spec(spec) # type: ignore
     spec.loader.exec_module(module) # type: ignore
     return module
+
+def error(*args: object, sep: str = " ", end: str = "\n") -> None:
+    """Prints in red to stderr"""
+    res: str = f"\x1b[91m{sep.join(map(str, args))}\x1b[0m"
+    print(res, end=end, file=sys.stderr, flush=True)
+
+def warn(*args: object, sep: str = " ", end: str = "\n") -> None:
+    """Prints in yellow to stderr"""
+    res: str = f"\x1b[93m{sep.join(map(str, args))}\x1b[0m"
+    print(res, end=end, file=sys.stderr, flush=True)

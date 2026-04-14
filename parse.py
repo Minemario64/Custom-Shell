@@ -10,13 +10,13 @@ class KillSwitch:
     pass
 
 class Command:
-    def __init__(self, names : list[str], func : Callable[..., None]):
+    def __init__(self, names : list[str], func : Callable[..., int | None]):
         self.names : list[str] = names
         self.func = func
 
-    def run(self, *inputs, **kwinputs) -> None | KillSwitch:
+    def run(self, *inputs, **kwinputs) -> int | KillSwitch:
         result = self.func(*inputs, **kwinputs)
-        return result if isinstance(result, KillSwitch) else None
+        return result if isinstance(result, KillSwitch) else (0 if result is None else result)
 
     def __repr__(self) -> str:
         return f"<Command: {self.names[0]} calls {self.func} by using {", ".join(self.names)}>"
@@ -96,9 +96,10 @@ class CommandExecuter:
 
         return commandBuilder
 
-    def _runSubprocess(self, tok: CommandToken, stdin: BytesIO | None, retStdout: bool = False) -> BytesIO | None:
-        EXTS: list[str] = [".py", ".sh" if sys.platform == "linux" else ".bat", ".pyin", ".pyw", ".csh"]
-        if os.name == "nt": EXTS.append(".exe")
+    def _runSubprocess(self, tok: CommandToken, stdin: BytesIO | None, retStdout: bool = False) -> BytesIO | int | None:
+        EXTS: list[str] = [".py", ".pyin", ".pyw", ".csh"]
+        if os.name == "nt": EXTS.extend([".exe", ".bat"])
+        if sys.platform == "linux": EXTS.extend([".sh"])
 
         exePath: str | Path | None = None
         mode: int = 0
@@ -176,6 +177,9 @@ class CommandExecuter:
                 cwd=os.getcwd()
             )
 
+        if proc.returncode != 0:
+            return proc.returncode
+
         if capture_stdout:
             if retStdout:
                 return BytesIO(proc.stdout)
@@ -199,10 +203,10 @@ class CommandExecuter:
             else:
                 self.__stdoutBuf.write(proc.stdout) # type: ignore
 
-    def _runCommand(self, tok: CommandToken, retStdout: bool = False) -> BytesIO | None | KillSwitch:
+    def _runCommand(self, tok: CommandToken, retStdout: bool = False) -> BytesIO | int | None | KillSwitch:
         if isinstance(tok.stdin, CommandToken):
             stdin = self._runCommand(tok.stdin, True) or BytesIO()
-            if isinstance(stdin, KillSwitch):
+            if isinstance(stdin, KillSwitch | int):
                 return stdin
 
         else:
@@ -214,18 +218,21 @@ class CommandExecuter:
             self.__stdinBuf = CommandStdinBuf(stdin) if not isinstance(stdin, KillSwitch) else None
 
             self.__stdoutBuf = CommandStdoutBuf(BytesIO() if retStdout or (tok.stdout is not None) else None)
-            if isinstance((killRet := self.commands[tok.exe].run(tok.args)), KillSwitch):
-                return killRet
+            if isinstance((ret := self.commands[tok.exe].run(tok.args)), KillSwitch):
+                return ret
+
+            if isinstance(ret, int) and ret != 0:
+                return ret
 
             if isinstance(tok.stdout, str):
                 path = self.pathResolver(tok.stdout)
                 if not path.parent.exists():
                     print(f"\x1b[91mPath '{path.parent.resolve()}' doesn't exist.\x1b[0m")
-                    return None
+                    return 1
 
                 if path.is_dir():
                     print(f"\x1b[91mPath '{path.resolve()}' is a directory.\x1b[0m")
-                    return None
+                    return 1
 
                 if not path.exists():
                     path.touch()
@@ -242,7 +249,7 @@ class CommandExecuter:
                 case "py/lib":
                     if not obj.get("file") is None:
                         filepath: Path = Path(self._replaceVars(obj['file']))
-                        getattr(loadModule(filepath), obj.get("func", "main"))(tok.args)
+                        return getattr(loadModule(filepath), obj.get("func", "main"))(tok.args)
 
         else:
             return self._runSubprocess(tok, stdin, retStdout)
@@ -330,4 +337,5 @@ class CommandExecuter:
 
     def run(self, line: str) -> None:
         for command in self._expandAliasRec(self.parser(self.lexer(line.strip()))):
-            self._runCommand(self._replaceVarsRec(command))
+            if isinstance((ret := self._runCommand(self._replaceVarsRec(command))), int) and ret != 0:
+                break

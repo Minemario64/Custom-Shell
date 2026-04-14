@@ -12,7 +12,7 @@ def version() -> str: return f"{".".join([str(num) for num in ver[:3]])}{"".join
 #===============#
 from clicanvas.input.readline import input, maxHistory, loadHistory, saveHistory
 from parse import CommandExecuter, Command, KillSwitch
-from utils import importFromJSON, exportToJSON
+from utils import importFromJSON, exportToJSON, error, warn
 from typing import Any, Generator
 from types import ModuleType
 import os, socket as ip, sys
@@ -37,7 +37,7 @@ curdir: Path = Path.cwd()
 PATH: list[str] = (os.getenv("PATH") or '').split(":" if os.name == "posix" else ";")
 USERNAME: str = os.getenv("USER" if os.name == "posix" else "USERNAME", Path.home().name)
 HOSTNAME: str = ip.gethostname()
-com = CommandExecuter(PATH, [], lambda path: resolvePath(curdir, path), {"HOME": str(Path.home()), "USER": USERNAME, "HOSTNAME": HOSTNAME, "PATH": "|".join(PATH), "VERSION": version}, {"~": str(Path.home()), "%": str(Path(__file__).parent)}, {}) # pyright: ignore[reportArgumentType] # Why does pyright think version is not a string? It's literally defined as a string right above >:(
+com = CommandExecuter(PATH, [], lambda path: resolvePath(curdir, path), {"HOME": str(Path.home()), "USER": USERNAME, "HOSTNAME": HOSTNAME, "PATH": "|".join(PATH), "VERSION": version, "OS": "linux" if sys.platform == "linux" else "windows"}, {"~": str(Path.home()), "%": str(Path(__file__).parent)}, {}) # pyright: ignore[reportArgumentType] # Why does pyright think version is not a string? It's literally defined as a string right above >:(
 mod = ModuleType("cshApi")
 mod.__dict__['__file__'] = __file__
 mod.__dict__['__package__'] = None
@@ -67,7 +67,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
 
     commandExecuter.addCommand(Command(["clear", 'cls'], lambda args: print(f"\x1b[2J\x1b[3J\x1b[H", end='', flush=True)))
     @commandExecuter.buildCommand(["cd", "chdir"])
-    def chdir(args: list[str]) -> None:
+    def chdir(args: list[str]) -> int | None:
         global curdir
         global pastcwd
         if not args:
@@ -85,20 +85,19 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         pastcwd = curdir
         curdir = curdir.joinpath(args[0]).absolute()
         if not curdir.is_dir():
-            print(f"\x1b[91mPath '{curdir}' is a file or doesn't exist")
-            curdir = pastcwd
-            return
+            error(f"Path '{curdir}' is a file or doesn't exist.")
+            return 1
 
         os.chdir(curdir)
 
     @commandExecuter.buildCommand(["ls", "listdir"])
-    def listdir(args: list[str]) -> None:
+    def listdir(args: list[str]) -> int | None:
         flags = getFlags({"all": ["-a", "--all"]}, args)
 
         target: Path = curdir if not args else resolvePath(curdir, args[0])
         if not target.is_dir():
-            print(f"\x1b[91mPath '{target}' is either a file or doesn't exist.\x1b[0m")
-            return
+            error(f"Path '{target}' is either a file or doesn't exist.")
+            return 1
 
         def is_hidden(path: Path) -> bool:
             if path.name.startswith("."):
@@ -109,6 +108,8 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                 FILE_ATTRIBUTE_HIDDEN = 0x02
                 attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
                 return attrs != -1 and (attrs & FILE_ATTRIBUTE_HIDDEN)
+
+            return False
 
         def dirContents(path: Path) -> Generator[Path, None, None]:
             for p in path.iterdir():
@@ -135,12 +136,12 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         print("  ".join([f"{"\x1b[94m" if path.is_dir() else ""}{path.name}{"\x1b[0m" if path.is_dir() else ""}" for path in paths]))
 
     @commandExecuter.buildCommand(["cat", 'read'])
-    def readFile(args: list[str]) -> None:
+    def readFile(args: list[str]) -> int | None:
         stdout = commandExecuter.getStdout()
         for filepath in args:
             path = resolvePath(curdir, filepath)
             if not path.exists():
-                print(f"\x1b[91mFile {repr(filepath)} not found\x1b[0m")
+                error(f"File {repr(filepath)} not found.")
                 continue
 
             with path.open("r", encoding='utf8') as file:
@@ -149,7 +150,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         stdout.flush()
 
     @commandExecuter.buildCommand(["echo", 'print'])
-    def echo(args: list[str]) -> None:
+    def echo(args: list[str]) -> int | None:
         stdout = commandExecuter.getStdout()
         flags = getFlags({"escape": ["-e", "--escape"]}, args)
         base = " ".join(_echoReplace(args)) + "\n"
@@ -157,25 +158,25 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         stdout.flush()
 
     @commandExecuter.buildCommand(['touch', 'mkfile'])
-    def touch(args: list[str]) -> None:
+    def touch(args: list[str]) -> int | None:
         if not args:
-            print(f"\x1b[91mNo file name provided.\x1b[0m")
-            return
+            error("No file name provided.")
+            return 1
 
         for arg in args:
             path = resolvePath(curdir, arg)
             if not path.parent.exists():
-                print(f"\x1b[93mDirectory '{path.parent}' does not exist for file '{arg}'. Skipping.\x1b[0m")
+                warn(f"Directory '{path.parent}' does not exist for file '{arg}'. Skipping.")
                 continue
 
             if not path.exists():
                 path.touch()
 
     @commandExecuter.buildCommand(['mkdir'])
-    def mkdir(args: list[str]) -> None:
+    def mkdir(args: list[str]) -> int | None:
         if not args:
-            print(f"\x1b[91mNo directory name provided.\x1b[0m")
-            return
+            error("No directory name provided.")
+            return 1
 
         FLAGS = {"parents": True if any([arg in ("-p", "--parents") for arg in args]) else False}
         for flag in ("-p", "--parents"):
@@ -186,10 +187,10 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         path.mkdir(parents=FLAGS["parents"], exist_ok=True)
 
     @commandExecuter.buildCommand(['rm', 'del', 'remove'])
-    def remove(args: list[str]) -> None:
+    def remove(args: list[str]) -> int | None:
         if not args:
-            print(f"\x1b[91mNo file or directory name provided. Usage: rm <file(s) or directory(s)>\x1b[0m")
-            return
+            error("No file or directory name provided. Usage: rm <file(s) or directory(s)>")
+            return 1
 
         flags = getFlags({"recursive": ["-r", "--recursive"]}, args)
 
@@ -206,7 +207,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         for arg in args:
             path = resolvePath(curdir, arg)
             if not path.exists():
-                print(f"\x1b[91mFile or directory '{arg}' not found\x1b[0m")
+                error(f"File or directory '{arg}' not found.")
                 continue
 
             if path.is_dir():
@@ -215,7 +216,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                         path.rmdir()
 
                     except OSError:
-                        print(f"\x1b[93mDirectory '{arg}' is not empty. Use 'rm -r {arg}' to remove it and its contents. Skipping.\x1b[0m")
+                        warn(f"Directory '{arg}' is not empty. Use 'rm -r {arg}' to remove it and its contents. Skipping.")
 
                 else:
                     rmRec(path)
@@ -224,10 +225,10 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                 path.unlink()
 
     @commandExecuter.buildCommand(['mv', 'move'])
-    def move(args: list[str]) -> None:
+    def move(args: list[str]) -> int | None:
         if len(args) < 2:
-            print(f"\x1b[91mNot enough arguments provided. Usage: mv <source> <destination>\x1b[0m")
-            return
+            error("Not enough arguments provided. Usage: mv <source> <destination>")
+            return 1
 
         flags = getFlags({"recursive": ["-r", "--recursive"]}, args)
 
@@ -244,7 +245,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                         content = file.read()
 
                     if not dst.parent.exists():
-                        print(f"\x1b[93mDirectory '{dst.parent}' does not exist for destination '{dst}'. Skipping.\x1b[0m")
+                        warn(f"Directory '{dst.parent}' does not exist for destination '{dst}'. Skipping.")
                         continue
 
                     sub.unlink()
@@ -259,16 +260,16 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
 
         src, dst = resolvePath(curdir, args[0]), resolvePath(curdir, args[1])
         if not src.exists():
-            print(f"\x1b[91mSource file or directory '{args[0]}' not found\x1b[0m")
-            return
+            error(f"Source file or directory '{args[0]}' not found.")
+            return 1
 
         if not dst:
-            print(f"\x1b[91mNo destination provided.\x1b[0m")
-            return
+            error("No destination provided.")
+            return 1
 
         if src.is_dir():
             if not flags["recursive"]:
-                print(f"\x1b[91mSource '{args[0]}' is a directory. Use 'mv -r {args[0]} <destination>' to move it and its contents.\x1b[0m")
+                error(f"Source '{args[0]}' is a directory. Use 'mv -r {args[0]} <destination>' to move it and its contents.")
 
             else:
                 dst.mkdir(exist_ok=True)
@@ -279,8 +280,8 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                 content = file.read()
 
             if not dst.parent.exists():
-                print(f"\x1b[93mDirectory '{dst.parent}' does not exist for destination '{dst}'.\x1b[0m")
-                return
+                error(f"Directory '{dst.parent}' does not exist for destination '{dst}'.")
+                return 1
 
             src.unlink()
 
@@ -291,10 +292,10 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                 file.write(content)
 
     @commandExecuter.buildCommand(['cp', 'copy'])
-    def copy(args: list[str]) -> None:
+    def copy(args: list[str]) -> int | None:
         if len(args) < 2:
-            print(f"\x1b[91mNot enough arguments provided. Usage: cp <source> <destination>\x1b[0m")
-            return
+            error("Not enough arguments provided. Usage: cp <source> <destination>")
+            return 1
 
         flags = getFlags({"recursive": ["-r", "--recursive"]}, args)
 
@@ -311,7 +312,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                         content = file.read()
 
                     if not dst.parent.exists():
-                        print(f"\x1b[93mDirectory '{dst.parent}' does not exist for destination '{dst}'. Skipping.\x1b[0m")
+                        warn(f"Directory '{dst.parent}' does not exist for destination '{dst}'. Skipping.")
                         continue
 
                     if not dst.exists():
@@ -322,16 +323,16 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
 
         src, dst = resolvePath(curdir, args[0]), resolvePath(curdir, args[1])
         if not src.exists():
-            print(f"\x1b[91mSource file or directory '{args[0]}' not found\x1b[0m")
-            return
+            error(f"Source file or directory '{args[0]}' not found.")
+            return 1
 
         if not dst:
-            print(f"\x1b[91mNo destination provided.\x1b[0m")
-            return
+            error("No destination provided.")
+            return 1
 
         if src.is_dir():
             if not flags['recursive']:
-                print(f"\x1b[91mSource '{args[0]}' is a directory. Use 'cp -r {args[0]} <destination>' to copy it and its contents.\x1b[0m")
+                error(f"Source '{args[0]}' is a directory. Use 'cp -r {args[0]} <destination>' to copy it and its contents.")
 
             else:
                 dst.mkdir(exist_ok=True)
@@ -342,8 +343,8 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
                 content = file.read()
 
             if not dst.parent.exists():
-                print(f"\x1b[93mDirectory '{dst.parent}' does not exist for destination '{dst}'.\x1b[0m")
-                return
+                error(f"Directory '{dst.parent}' does not exist for destination '{dst}'.")
+                return 1
 
             if not dst.exists():
                 dst.touch()
@@ -366,7 +367,7 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
 
         for arg in args:
             if "=" not in arg:
-                print(f"\x1b[91mArgument '{arg}' is not a valid variable assignment.\x1b[0m")
+                error(f"Argument '{arg}' is not a valid variable assignment.")
                 continue
 
             name, value = arg.split("=", 1)
@@ -383,16 +384,16 @@ def integrateBuiltinCommands(commandExecuter: CommandExecuter) -> None:
         commandExecuter.aliases[args[0]] = commandExecuter.parser(commandExecuter.lexer(args[1].strip()))
 
 @com.buildCommand(['csh'])
-def shellFile(args: list[str]):
+def shellFile(args: list[str]) -> int | None:
     global curdir, pastcwd
     if not args:
-        print(f"\x1b[91mNo shell file provided.\x1b[0m")
-        return
+        error("No shell file provided.")
+        return 1
 
     path = resolvePath(curdir, args[0])
     if not path.is_file():
-        print(f"\x1b[91mShell file '{path}' not found.\x1b[0m")
-        return
+        error(f"Shell file '{path}' not found.")
+        return 1
 
     comm = CommandExecuter(com.PATH, [], lambda path: resolvePath(curdir, path), com.vars, com.specialVars | {"^": str(path.parent.resolve())}, com.aliases)
     integrateBuiltinCommands(comm)
@@ -461,7 +462,7 @@ if __name__ == "__main__":
         )
 
     json = importFromJSON(CONFIG_PATH)
-    maxHistory(json.get("maxHistory", 50))
+    maxHistory(json.get("maxHistory", 100))
     if not ((pathObj := json.get("PATH")) is None):
         com.PATH = [Path(com._replaceVars(path)) for path in pathObj.get("paths", [])] + ([Path(path) for path in PATH] if pathObj.get("includeSystemPath", True) else [])
         com.vars['PATH'] = "|".join([str(path) for path in com.PATH])
