@@ -1,9 +1,10 @@
 import os, re
 import pathlib
 from typing import Callable, Any
+import __future__
 
 class Path(pathlib.Path):
-    def absolute(self) -> "Path":
+    def absolute(self) -> Path:
         """Returns the absolute path of this path, without resolving symlinks."""
         return Path(absolutePath(str(self)))
 

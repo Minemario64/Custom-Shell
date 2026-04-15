@@ -47,6 +47,13 @@ mod.__dict__['getStdin'] = com.getStdin
 mod.__dict__['VERSION'] = version
 sys.modules["cshApi"] = mod
 
+                                            # TEMPLATE: ((BG, FG), (BG, FG)) # int in 256 color palette
+def prompt(text: tuple[str, str], colors: tuple[tuple[int, int], tuple[int, int], tuple[int, int]]) -> str:
+    from shutil import get_terminal_size
+    dots: str = "∙ "*((get_terminal_size().columns - ((10 - (3 if text[1] == "" else 0)) + sum([len(s) for s in text]) + len(f"{USERNAME} @ {HOSTNAME}") + 5)) // 2)
+    return f"\x1b[1m\x1b[38;5;{colors[0][0]}m╭─\x1b[22m\x1b[38;5;{colors[0][1]}m\x1b[48;5;{colors[0][0]}m {text[0]} \x1b[0m\x1b[38;5;{colors[0][0]}m\x1b[48;5;{colors[1][0]}m{f"\x1b[38;5;{colors[1][1]}m  {text[1]} " if text[1] != "" else ''}\x1b[0m\x1b[38;5;{colors[1][0]}m\x1b[0m\x1b[90m {dots}\x1b[38;5;{colors[2][0]}m\x1b[48;5;{colors[2][0]}m\x1b[38;5;{colors[2][1]}m {f"{USERNAME} @ {HOSTNAME}"} \x1b[38;5;{colors[2][0]}m\x1b[49m\n\x1b[38;5;{colors[0][0]}m╰\x1b[95m$\x1b[0m "
+
+
 #===================#
 # BUILT-IN COMMANDS #
 #===================#
@@ -432,16 +439,21 @@ def shellFile(args: list[str]) -> int | None:
 #   MAIN LOGIC   #
 #================#
 if __name__ == "__main__":
-    flagsDict = {
+    flagsDict: dict[str, list[str]] = {
         "version": ["-v", "--version"],
+        "dir": ['-d', '--directory']
     }
     lFlags = getListArgs({"command": ['-c', '--command']}, [alias for flag in flagsDict.values() for alias in flag], (args := sys.argv[1:]))
-    flags = getFlags(flagsDict, args)
+    flags = getFlags({k: v for k, v in flagsDict.items() if k in ["version"]}, args)
+    kwargs = getKwArgs({"dir": ["-d", "--directory"]}, args)
     if flags["version"]:
         print(version)
         exit()
 
     integrateBuiltinCommands(com)
+
+    if kwargs['dir']:
+        com.run(f'cd "{kwargs['dir']}"')
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.touch()
@@ -456,7 +468,9 @@ if __name__ == "__main__":
                 "aliases": {
                     "la": "ls -a",
                 },
-                "vars": {}
+                "vars": {},
+                "maxHistory": 1000,
+                "prompt": 'minimal'
             },
             CONFIG_PATH
         )
@@ -476,6 +490,17 @@ if __name__ == "__main__":
     if not HIST_PATH.exists():
         HIST_PATH.touch()
 
+    match (promptMode := json.get('prompt', 'minimal')):
+        case "minimal":
+            PROMPT = lambda: f"\x1b[94m{USERNAME}@{HOSTNAME}\x1b[0m:\x1b[38;5;40m{curdir.shorten(com.specialVars)}\x1b[95m$\x1b[0m "
+
+        case "modern":
+            PROMPT = lambda: prompt((curdir.shorten(com.specialVars), ""), ((40, 0),(166, 0), (4, 15)))
+
+        case _:
+            warn(f"Unknown prompt '{promptMode}'. Defaulting to minimal.")
+            PROMPT = lambda: f"\x1b[94m{USERNAME}@{HOSTNAME}\x1b[0m:\x1b[38;5;40m{curdir.shorten(com.specialVars)}\x1b[95m$\x1b[0m "
+
     if lFlags["command"]:
         command = " ".join(lFlags["command"])
         com.run(command)
@@ -484,7 +509,7 @@ if __name__ == "__main__":
     loadHistory(HIST_PATH)
 
     while True:
-        command: str = input(f"\x1b[94m{USERNAME}@{HOSTNAME}\x1b[0m:\x1b[38;5;40m{curdir.shorten(com.specialVars)}\x1b[95m$\x1b[0m ")
+        command: str = input(PROMPT())
         try:
             com.run(command)
 
